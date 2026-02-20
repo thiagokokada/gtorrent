@@ -1,31 +1,19 @@
 const bodyEl = document.querySelector("#torrents-body");
-const addForm = document.querySelector("#add-form");
 const messageEl = document.querySelector("#form-message");
 const statusEl = document.querySelector("#status");
 const statsEl = document.querySelector("#global-stats");
 const refreshBtn = document.querySelector("#refresh");
+const openAddBtn = document.querySelector("#open-add");
 const toggleSelectedBtn = document.querySelector("#toggle-selected");
 const removeSelectedBtn = document.querySelector("#remove-selected");
 const rowTemplate = document.querySelector("#row-template");
 const filterContainer = document.querySelector("#filters");
 const sortButtons = document.querySelectorAll(".sort-btn");
 
-const detailsEmptyEl = document.querySelector("#details-empty");
-const detailsContentEl = document.querySelector("#details-content");
-const detailsNameEl = document.querySelector("#details-name");
-const detailsHashEl = document.querySelector("#details-hash");
-const detailsStateEl = document.querySelector("#details-state");
-const detailsProgressEl = document.querySelector("#details-progress");
-const detailsProgressTextEl = document.querySelector("#details-progress-text");
-const detailsAddedEl = document.querySelector("#details-added");
-const detailsETAEl = document.querySelector("#details-eta");
-const detailsRatioEl = document.querySelector("#details-ratio");
-const detailsPeersEl = document.querySelector("#details-peers");
-const detailsSeedsEl = document.querySelector("#details-seeds");
-const detailsDownloadedEl = document.querySelector("#details-downloaded");
-const detailsSizeEl = document.querySelector("#details-size");
-const detailsDownRateEl = document.querySelector("#details-down-rate");
-const detailsUpRateEl = document.querySelector("#details-up-rate");
+const addDialog = document.querySelector("#add-dialog");
+const addForm = document.querySelector("#add-form");
+const cancelAddBtn = document.querySelector("#cancel-add");
+const addBtn = document.querySelector("#add-btn");
 
 const REFRESH_INTERVAL_MS = 4000;
 
@@ -162,8 +150,8 @@ function getVisibleTorrents() {
 }
 
 function canStopTorrent(torrent) {
-  const state = getNormalizedState(torrent);
-  return state === "downloading" || state === "seeding";
+  const torrentState = getNormalizedState(torrent);
+  return torrentState === "downloading" || torrentState === "seeding";
 }
 
 function updateSelectedControls() {
@@ -210,7 +198,7 @@ function render() {
   bodyEl.innerHTML = "";
 
   if (!torrents.length) {
-    bodyEl.innerHTML = '<tr><td colspan="9" class="placeholder">No torrents in this view</td></tr>';
+    bodyEl.innerHTML = '<tr><td colspan="11" class="placeholder">No torrents in this view</td></tr>';
   } else {
     for (const torrent of torrents) {
       const row = rowTemplate.content.firstElementChild.cloneNode(true);
@@ -223,6 +211,8 @@ function render() {
       row.querySelector(".added").textContent = formatAdded(torrent.addedAt);
       row.querySelector(".eta").textContent = formatETA(torrent.etaSeconds);
       row.querySelector(".ratio").textContent = formatRatio(torrent.ratio);
+      row.querySelector(".peers").textContent = String(safeNumber(torrent.peers));
+      row.querySelector(".seeds").textContent = String(safeNumber(torrent.seeds));
 
       const stateEl = row.querySelector(".state");
       stateEl.textContent = stateText;
@@ -248,7 +238,6 @@ function render() {
   }
 
   updateSelectedControls();
-  renderDetails();
   updateGlobalStats();
   renderSortHeaders();
 }
@@ -272,42 +261,13 @@ function keyLabel(key) {
     case "progress": return "Done";
     case "etaSeconds": return "ETA";
     case "ratio": return "Ratio";
+    case "peers": return "Peers";
+    case "seeds": return "Seeds";
     case "downRate": return "Down";
     case "upRate": return "Up";
     case "sizeBytes": return "Size";
     default: return key;
   }
-}
-
-function renderDetails() {
-  const selected = state.torrents.find((torrent) => torrent.hash === state.selectedHash);
-  if (!selected) {
-    detailsEmptyEl.style.display = "block";
-    detailsContentEl.classList.add("hidden");
-    detailsStateEl.textContent = "None";
-    return;
-  }
-
-  detailsEmptyEl.style.display = "none";
-  detailsContentEl.classList.remove("hidden");
-
-  const stateText = getNormalizedState(selected);
-  const progress = safeNumber(selected.progress);
-
-  detailsNameEl.textContent = selected.name || selected.hash;
-  detailsHashEl.textContent = selected.hash;
-  detailsStateEl.textContent = stateText;
-  detailsProgressEl.value = progress;
-  detailsProgressTextEl.textContent = `${Math.round(progress * 100)}%`;
-  detailsAddedEl.textContent = formatAdded(selected.addedAt);
-  detailsETAEl.textContent = formatETA(selected.etaSeconds);
-  detailsRatioEl.textContent = formatRatio(selected.ratio);
-  detailsPeersEl.textContent = String(safeNumber(selected.peers));
-  detailsSeedsEl.textContent = String(safeNumber(selected.seeds));
-  detailsDownloadedEl.textContent = formatBytes(safeNumber(selected.doneBytes));
-  detailsSizeEl.textContent = formatBytes(safeNumber(selected.sizeBytes));
-  detailsDownRateEl.textContent = formatRate(safeNumber(selected.downRate));
-  detailsUpRateEl.textContent = formatRate(safeNumber(selected.upRate));
 }
 
 async function removeSelectedTorrent() {
@@ -361,19 +321,34 @@ async function toggleSelectedTorrent() {
   }
 }
 
+function openAddDialog() {
+  if (typeof addDialog.showModal === "function") {
+    addDialog.showModal();
+  } else {
+    addDialog.setAttribute("open", "open");
+  }
+}
+
+function closeAddDialog() {
+  if (typeof addDialog.close === "function") {
+    addDialog.close();
+  } else {
+    addDialog.removeAttribute("open");
+  }
+}
+
 addForm.addEventListener("submit", async (event) => {
   event.preventDefault();
   setFormMessage("");
 
-  const submitBtn = addForm.querySelector("#add-btn");
-  submitBtn.disabled = true;
+  addBtn.disabled = true;
 
   const magnet = addForm.magnet.value.trim();
   const file = addForm.torrent.files[0];
 
   if (!magnet && !file) {
     setFormMessage("Provide a magnet link or select a .torrent file", true);
-    submitBtn.disabled = false;
+    addBtn.disabled = false;
     return;
   }
 
@@ -403,13 +378,22 @@ addForm.addEventListener("submit", async (event) => {
     }
 
     addForm.reset();
+    closeAddDialog();
     setFormMessage("Torrent added");
     await fetchTorrents();
   } catch (error) {
     setFormMessage(error.message, true);
   } finally {
-    submitBtn.disabled = false;
+    addBtn.disabled = false;
   }
+});
+
+cancelAddBtn.addEventListener("click", () => {
+  closeAddDialog();
+});
+
+openAddBtn.addEventListener("click", () => {
+  openAddDialog();
 });
 
 filterContainer.addEventListener("click", (event) => {
