@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>gTorrent</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <main class="app">
+    <header class="hero">
+      <h1>gTorrent</h1>
+      <p>Modern rTorrent web interface</p>
+      <div class="status" id="status">Connecting...</div>
+    </header>
+
+    <section class="card">
+      <h2>Add Torrent</h2>
+      <form id="add-form">
+        <label for="magnet">Magnet URL</label>
+        <input type="url" id="magnet" name="magnet" placeholder="magnet:?xt=urn:btih:...">
+        <div class="or">or</div>
+        <label for="torrent">.torrent file</label>
+        <input type="file" id="torrent" name="torrent" accept=".torrent,application/x-bittorrent">
+        <button type="submit">Add</button>
+      </form>
+      <p id="form-message" class="message"></p>
+    </section>
+
+    <section class="card">
+      <div class="card-header">
+        <h2>Torrents</h2>
+        <button id="refresh" type="button" class="secondary">Refresh</button>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Name</th>
+              <th>State</th>
+              <th>Progress</th>
+              <th>Down</th>
+              <th>Up</th>
+              <th>Size</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody id="torrents-body">
+            <tr><td colspan="7" class="placeholder">No torrents yet</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+
+  <template id="row-template">
+    <tr>
+      <td class="name"></td>
+      <td class="state"></td>
+      <td>
+        <div class="progress-wrap">
+          <progress class="progress" max="1" value="0"></progress>
+          <span class="percent"></span>
+        </div>
+      </td>
+      <td class="down"></td>
+      <td class="up"></td>
+      <td class="size"></td>
+      <td><button class="danger remove" type="button">Remove</button></td>
+    </tr>
+  </template>
+
+  <script type="module" src="/app.js"></script>
+</body>
+</html>

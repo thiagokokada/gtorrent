@@ -1,0 +1,165 @@
+:root {
+  --bg: linear-gradient(145deg, #f6f3ec 0%, #e6eee8 50%, #f9f8f2 100%);
+  --card: #ffffffcc;
+  --text: #1e2721;
+  --muted: #59655c;
+  --accent: #1f7a4d;
+  --accent-soft: #cde8d8;
+  --danger: #9f2b2b;
+  --border: #d7e1d9;
+}
+
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  min-height: 100vh;
+  font-family: "IBM Plex Sans", "Segoe UI", sans-serif;
+  color: var(--text);
+  background: var(--bg);
+}
+
+.app {
+  max-width: 1120px;
+  margin: 0 auto;
+  padding: 2rem 1rem 3rem;
+  display: grid;
+  gap: 1rem;
+}
+
+.hero {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.8rem;
+}
+
+.hero h1 {
+  font-family: "IBM Plex Serif", Georgia, serif;
+  margin: 0;
+  font-size: clamp(2rem, 5vw, 3rem);
+}
+
+.hero p {
+  margin: 0;
+  color: var(--muted);
+}
+
+.status {
+  margin-left: auto;
+  padding: 0.4rem 0.7rem;
+  border-radius: 999px;
+  font-size: 0.85rem;
+  background: var(--accent-soft);
+  color: #154a2f;
+}
+
+.card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 1rem;
+  backdrop-filter: blur(4px);
+  box-shadow: 0 10px 24px #293d3115;
+}
+
+.card h2 {
+  margin: 0 0 0.9rem;
+  font-family: "IBM Plex Serif", Georgia, serif;
+}
+
+.card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 0.8rem;
+}
+
+form {
+  display: grid;
+  gap: 0.6rem;
+}
+
+input[type="url"],
+input[type="file"] {
+  width: 100%;
+  font: inherit;
+  color: inherit;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 0.6rem 0.8rem;
+  background: #fff;
+}
+
+.or {
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+button {
+  font: inherit;
+  border: 0;
+  border-radius: 10px;
+  padding: 0.56rem 0.9rem;
+  cursor: pointer;
+  background: var(--accent);
+  color: #fff;
+  transition: transform 120ms ease, opacity 120ms ease;
+}
+
+button:hover { transform: translateY(-1px); }
+button:disabled { opacity: 0.6; cursor: wait; }
+.secondary { background: #4d6a57; }
+.danger { background: var(--danger); }
+
+.message {
+  min-height: 1.25rem;
+  margin: 0;
+  color: var(--muted);
+}
+
+.table-wrap { overflow-x: auto; }
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  min-width: 760px;
+}
+
+th, td {
+  padding: 0.65rem 0.45rem;
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+}
+
+th { font-size: 0.88rem; color: var(--muted); }
+.name {
+  max-width: 380px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.state {
+  text-transform: capitalize;
+}
+
+.progress-wrap {
+  display: grid;
+  gap: 0.2rem;
+}
+
+progress {
+  width: 100%;
+  height: 12px;
+}
+
+.placeholder {
+  color: var(--muted);
+  text-align: center;
+}
+
+@media (max-width: 700px) {
+  .hero { align-items: flex-start; }
+  .status { margin-left: 0; }
+}

@@ -1,0 +1,14 @@
+[Unit]
+Description=gTorrent web UI for rTorrent
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/gtorrent
+EnvironmentFile=/opt/gtorrent/.env
+ExecStart=/opt/gtorrent/gtorrent
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target
