@@ -30,6 +30,11 @@ body {
   background: var(--bg);
 }
 
+body.col-resizing {
+  cursor: col-resize;
+  user-select: none;
+}
+
 .app-shell {
   width: 100%;
   max-width: none;
@@ -217,6 +222,7 @@ button:disabled {
 table {
   width: 100%;
   border-collapse: collapse;
+  table-layout: fixed;
   min-width: 1260px;
 }
 
@@ -227,6 +233,7 @@ thead th {
   position: sticky;
   top: 0;
   z-index: 1;
+  overflow: visible;
 }
 
 .sort-btn {
@@ -243,6 +250,33 @@ thead th {
 
 .sort-btn:hover {
   background: #c8d8eb;
+}
+
+.col-resizer {
+  position: absolute;
+  top: 0;
+  right: -3px;
+  width: 8px;
+  height: 100%;
+  cursor: col-resize;
+  touch-action: none;
+  z-index: 3;
+}
+
+.col-resizer::after {
+  content: "";
+  position: absolute;
+  top: 4px;
+  bottom: 4px;
+  right: 3px;
+  width: 1px;
+  background: #98aac1;
+  opacity: 0.3;
+}
+
+thead th:hover .col-resizer::after,
+.col-resizer.active::after {
+  opacity: 0.95;
 }
 
 tbody td {

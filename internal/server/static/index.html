@@ -48,20 +48,33 @@
 
     <section class="table-panel card">
       <div class="table-wrap">
-        <table>
+        <table id="torrent-table">
+          <colgroup>
+            <col data-col="name">
+            <col data-col="state">
+            <col data-col="addedAt">
+            <col data-col="progress">
+            <col data-col="etaSeconds">
+            <col data-col="ratio">
+            <col data-col="peers">
+            <col data-col="seeds">
+            <col data-col="downRate">
+            <col data-col="upRate">
+            <col data-col="sizeBytes">
+          </colgroup>
           <thead>
             <tr>
-              <th><button type="button" class="sort-btn" data-sort="name">Name</button></th>
-              <th><button type="button" class="sort-btn" data-sort="state">State</button></th>
-              <th><button type="button" class="sort-btn" data-sort="addedAt">Added</button></th>
-              <th><button type="button" class="sort-btn" data-sort="progress">Done</button></th>
-              <th><button type="button" class="sort-btn" data-sort="etaSeconds">ETA</button></th>
-              <th><button type="button" class="sort-btn" data-sort="ratio">Ratio</button></th>
-              <th><button type="button" class="sort-btn" data-sort="peers">Peers</button></th>
-              <th><button type="button" class="sort-btn" data-sort="seeds">Seeds</button></th>
-              <th><button type="button" class="sort-btn" data-sort="downRate">Down</button></th>
-              <th><button type="button" class="sort-btn" data-sort="upRate">Up</button></th>
-              <th><button type="button" class="sort-btn" data-sort="sizeBytes">Size</button></th>
+              <th data-col="name"><button type="button" class="sort-btn" data-sort="name">Name</button></th>
+              <th data-col="state"><button type="button" class="sort-btn" data-sort="state">State</button></th>
+              <th data-col="addedAt"><button type="button" class="sort-btn" data-sort="addedAt">Added</button></th>
+              <th data-col="progress"><button type="button" class="sort-btn" data-sort="progress">Done</button></th>
+              <th data-col="etaSeconds"><button type="button" class="sort-btn" data-sort="etaSeconds">ETA</button></th>
+              <th data-col="ratio"><button type="button" class="sort-btn" data-sort="ratio">Ratio</button></th>
+              <th data-col="peers"><button type="button" class="sort-btn" data-sort="peers">Peers</button></th>
+              <th data-col="seeds"><button type="button" class="sort-btn" data-sort="seeds">Seeds</button></th>
+              <th data-col="downRate"><button type="button" class="sort-btn" data-sort="downRate">Down</button></th>
+              <th data-col="upRate"><button type="button" class="sort-btn" data-sort="upRate">Up</button></th>
+              <th data-col="sizeBytes"><button type="button" class="sort-btn" data-sort="sizeBytes">Size</button></th>
             </tr>
           </thead>
           <tbody id="torrents-body">

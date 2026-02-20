@@ -1,4 +1,5 @@
 const bodyEl = document.querySelector("#torrents-body");
+const tableEl = document.querySelector("#torrent-table");
 const messageEl = document.querySelector("#form-message");
 const statusEl = document.querySelector("#status");
 const statsEl = document.querySelector("#global-stats");
@@ -16,6 +17,53 @@ const cancelAddBtn = document.querySelector("#cancel-add");
 const addBtn = document.querySelector("#add-btn");
 
 const REFRESH_INTERVAL_MS = 4000;
+const COLUMN_STORAGE_KEY = "gtorrent.column.widths.v1";
+const COLUMN_ORDER = [
+  "name",
+  "state",
+  "addedAt",
+  "progress",
+  "etaSeconds",
+  "ratio",
+  "peers",
+  "seeds",
+  "downRate",
+  "upRate",
+  "sizeBytes",
+];
+const COLUMN_DEFAULT_WIDTHS = {
+  name: 340,
+  state: 96,
+  addedAt: 144,
+  progress: 152,
+  etaSeconds: 88,
+  ratio: 78,
+  peers: 72,
+  seeds: 72,
+  downRate: 102,
+  upRate: 102,
+  sizeBytes: 176,
+};
+const COLUMN_MIN_WIDTHS = {
+  name: 180,
+  state: 80,
+  addedAt: 110,
+  progress: 110,
+  etaSeconds: 72,
+  ratio: 60,
+  peers: 56,
+  seeds: 56,
+  downRate: 78,
+  upRate: 78,
+  sizeBytes: 120,
+};
+
+const columnEls = new Map(
+  Array.from(tableEl.querySelectorAll("colgroup col[data-col]"), (col) => [col.dataset.col, col]),
+);
+const columnWidths = {};
+
+let resizeState = null;
 
 const state = {
   torrents: [],
@@ -104,6 +152,111 @@ const parseJSON = async (response) => {
     return {};
   }
 };
+
+function clampColumnWidth(key, width) {
+  const min = COLUMN_MIN_WIDTHS[key] || 56;
+  const next = Number(width);
+  if (!Number.isFinite(next)) return min;
+  return Math.max(min, Math.round(next));
+}
+
+function persistColumnWidths() {
+  try {
+    localStorage.setItem(COLUMN_STORAGE_KEY, JSON.stringify(columnWidths));
+  } catch {
+    // Ignore storage failures (private mode or blocked storage).
+  }
+}
+
+function loadColumnWidths() {
+  try {
+    const raw = localStorage.getItem(COLUMN_STORAGE_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object") return {};
+    return parsed;
+  } catch {
+    return {};
+  }
+}
+
+function setColumnWidth(key, width, persist = false) {
+  const col = columnEls.get(key);
+  if (!col) return;
+
+  const clamped = clampColumnWidth(key, width);
+  columnWidths[key] = clamped;
+  col.style.width = `${clamped}px`;
+
+  if (persist) {
+    persistColumnWidths();
+  }
+}
+
+function syncTableWidth() {
+  const wrap = tableEl.closest(".table-wrap");
+  const total = COLUMN_ORDER.reduce((sum, key) => sum + (columnWidths[key] || COLUMN_DEFAULT_WIDTHS[key] || 0), 0);
+  const wrapWidth = wrap ? wrap.clientWidth : total;
+  tableEl.style.width = `${Math.max(total, wrapWidth)}px`;
+}
+
+function startColumnResize(event, key, thEl, handleEl) {
+  if (event.button !== undefined && event.button !== 0) return;
+  event.preventDefault();
+  event.stopPropagation();
+
+  const widthFromCol = parseFloat(columnEls.get(key)?.style.width || "");
+  const startWidth = Number.isFinite(widthFromCol) ? widthFromCol : thEl.getBoundingClientRect().width;
+
+  resizeState = {
+    key,
+    startX: event.clientX,
+    startWidth,
+    handleEl,
+  };
+
+  handleEl.classList.add("active");
+  document.body.classList.add("col-resizing");
+}
+
+function onColumnResizeMove(event) {
+  if (!resizeState) return;
+  const delta = event.clientX - resizeState.startX;
+  const nextWidth = resizeState.startWidth + delta;
+  setColumnWidth(resizeState.key, nextWidth, false);
+  syncTableWidth();
+}
+
+function onColumnResizeEnd() {
+  if (!resizeState) return;
+  resizeState.handleEl.classList.remove("active");
+  resizeState = null;
+  document.body.classList.remove("col-resizing");
+  persistColumnWidths();
+}
+
+function initializeResizableColumns() {
+  const saved = loadColumnWidths();
+
+  for (const key of COLUMN_ORDER) {
+    const configured = saved[key] ?? COLUMN_DEFAULT_WIDTHS[key];
+    setColumnWidth(key, configured, false);
+  }
+  syncTableWidth();
+
+  const thEls = tableEl.querySelectorAll("thead th[data-col]");
+  for (const thEl of thEls) {
+    if (thEl.querySelector(".col-resizer")) continue;
+    const key = thEl.dataset.col;
+    const handleEl = document.createElement("span");
+    handleEl.className = "col-resizer";
+    handleEl.setAttribute("role", "separator");
+    handleEl.setAttribute("aria-orientation", "vertical");
+    handleEl.setAttribute("aria-label", `Resize ${keyLabel(key)} column`);
+    handleEl.addEventListener("pointerdown", (event) => startColumnResize(event, key, thEl, handleEl));
+    thEl.appendChild(handleEl);
+  }
+}
 
 function updateGlobalStats() {
   const torrents = getVisibleTorrents();
@@ -425,9 +578,16 @@ for (const button of sortButtons) {
   });
 }
 
+window.addEventListener("pointermove", onColumnResizeMove);
+window.addEventListener("pointerup", onColumnResizeEnd);
+window.addEventListener("pointercancel", onColumnResizeEnd);
+window.addEventListener("blur", onColumnResizeEnd);
+window.addEventListener("resize", syncTableWidth);
+
 refreshBtn.addEventListener("click", () => fetchTorrents());
 toggleSelectedBtn.addEventListener("click", () => toggleSelectedTorrent());
 removeSelectedBtn.addEventListener("click", () => removeSelectedTorrent());
 
+initializeResizableColumns();
 fetchTorrents();
 setInterval(fetchTorrents, REFRESH_INTERVAL_MS);
