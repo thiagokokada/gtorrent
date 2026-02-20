@@ -32,7 +32,10 @@
           <span>.torrent</span>
           <input type="file" id="torrent" name="torrent" accept=".torrent,application/x-bittorrent">
         </label>
-        <button type="submit" id="add-btn">Add</button>
+        <div class="field action-field">
+          <span>&nbsp;</span>
+          <button type="submit" id="add-btn">Add</button>
+        </div>
       </form>
       <div class="toolbar-actions">
         <button type="button" id="remove-selected" class="danger" disabled>Remove Selected</button>
@@ -60,14 +63,17 @@
               <tr>
                 <th><button type="button" class="sort-btn" data-sort="name">Name</button></th>
                 <th><button type="button" class="sort-btn" data-sort="state">State</button></th>
+                <th><button type="button" class="sort-btn" data-sort="addedAt">Added</button></th>
                 <th><button type="button" class="sort-btn" data-sort="progress">Done</button></th>
+                <th><button type="button" class="sort-btn" data-sort="etaSeconds">ETA</button></th>
+                <th><button type="button" class="sort-btn" data-sort="ratio">Ratio</button></th>
                 <th><button type="button" class="sort-btn" data-sort="downRate">Down</button></th>
                 <th><button type="button" class="sort-btn" data-sort="upRate">Up</button></th>
                 <th><button type="button" class="sort-btn" data-sort="sizeBytes">Size</button></th>
               </tr>
             </thead>
             <tbody id="torrents-body">
-              <tr><td colspan="6" class="placeholder">No torrents</td></tr>
+              <tr><td colspan="9" class="placeholder">No torrents</td></tr>
             </tbody>
           </table>
         </div>
@@ -88,6 +94,11 @@
           <span id="details-progress-text">0%</span>
         </div>
         <div class="metrics">
+          <div><span>Added</span><strong id="details-added">-</strong></div>
+          <div><span>ETA</span><strong id="details-eta">-</strong></div>
+          <div><span>Ratio</span><strong id="details-ratio">-</strong></div>
+          <div><span>Peers</span><strong id="details-peers">0</strong></div>
+          <div><span>Seeds</span><strong id="details-seeds">0</strong></div>
           <div><span>Downloaded</span><strong id="details-downloaded">0 B</strong></div>
           <div><span>Total Size</span><strong id="details-size">0 B</strong></div>
           <div><span>Down Rate</span><strong id="details-down-rate">0 B/s</strong></div>
@@ -101,12 +112,15 @@
     <tr>
       <td class="name"></td>
       <td><span class="state"></span></td>
+      <td class="added"></td>
       <td>
         <div class="progress-wrap">
           <progress class="progress" max="1" value="0"></progress>
           <span class="percent"></span>
         </div>
       </td>
+      <td class="eta"></td>
+      <td class="ratio"></td>
       <td class="down"></td>
       <td class="up"></td>
       <td class="size"></td>

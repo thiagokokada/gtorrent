@@ -16,6 +16,11 @@ const detailsHashEl = document.querySelector("#details-hash");
 const detailsStateEl = document.querySelector("#details-state");
 const detailsProgressEl = document.querySelector("#details-progress");
 const detailsProgressTextEl = document.querySelector("#details-progress-text");
+const detailsAddedEl = document.querySelector("#details-added");
+const detailsETAEl = document.querySelector("#details-eta");
+const detailsRatioEl = document.querySelector("#details-ratio");
+const detailsPeersEl = document.querySelector("#details-peers");
+const detailsSeedsEl = document.querySelector("#details-seeds");
 const detailsDownloadedEl = document.querySelector("#details-downloaded");
 const detailsSizeEl = document.querySelector("#details-size");
 const detailsDownRateEl = document.querySelector("#details-down-rate");
@@ -28,8 +33,8 @@ const state = {
   loading: false,
   selectedHash: "",
   filter: "all",
-  sortKey: "name",
-  sortDir: 1,
+  sortKey: "addedAt",
+  sortDir: -1,
 };
 
 const formatBytes = (bytes) => {
@@ -42,8 +47,45 @@ const formatBytes = (bytes) => {
 
 const formatRate = (bytesPerSec) => `${formatBytes(bytesPerSec)}/s`;
 
+const formatRatio = (ratio) => {
+  const n = Number(ratio);
+  if (!Number.isFinite(n) || n < 0) return "0.00";
+  return n.toFixed(2);
+};
+
+const formatETA = (seconds) => {
+  const n = Number(seconds);
+  if (!Number.isFinite(n) || n < 0) return "∞";
+  if (n === 0) return "Done";
+
+  const d = Math.floor(n / 86400);
+  const h = Math.floor((n % 86400) / 3600);
+  const m = Math.floor((n % 3600) / 60);
+  const s = Math.floor(n % 60);
+
+  if (d > 0) return `${d}d ${h}h`;
+  if (h > 0) return `${h}h ${m}m`;
+  if (m > 0) return `${m}m ${s}s`;
+  return `${s}s`;
+};
+
+const formatAdded = (value) => {
+  if (!value) return "-";
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return "-";
+  const date = d.toLocaleDateString(undefined, { year: "numeric", month: "2-digit", day: "2-digit" });
+  const time = d.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
+  return `${date} ${time}`;
+};
+
 const safeNumber = (value) => {
   const n = Number(value);
+  return Number.isFinite(n) ? n : 0;
+};
+
+const parseAdded = (value) => {
+  if (!value) return 0;
+  const n = Date.parse(value);
   return Number.isFinite(n) ? n : 0;
 };
 
@@ -82,6 +124,24 @@ function updateGlobalStats() {
   statsEl.textContent = `${torrents.length} ${label} | ↓ ${formatRate(down)} | ↑ ${formatRate(up)}`;
 }
 
+function getSortValue(torrent, key) {
+  switch (key) {
+    case "name":
+    case "state":
+      return String(torrent[key] || "").toLowerCase();
+    case "addedAt":
+      return parseAdded(torrent.addedAt);
+    case "etaSeconds": {
+      const eta = safeNumber(torrent.etaSeconds);
+      return eta < 0 ? Number.MAX_SAFE_INTEGER : eta;
+    }
+    case "ratio":
+      return safeNumber(torrent.ratio);
+    default:
+      return safeNumber(torrent[key]);
+  }
+}
+
 function getVisibleTorrents() {
   const filtered = state.filter === "all"
     ? state.torrents
@@ -90,12 +150,13 @@ function getVisibleTorrents() {
   return [...filtered].sort((a, b) => {
     const dir = state.sortDir;
     const key = state.sortKey;
-    if (key === "name" || key === "state") {
-      const av = String(a[key] || "").toLowerCase();
-      const bv = String(b[key] || "").toLowerCase();
+    const av = getSortValue(a, key);
+    const bv = getSortValue(b, key);
+
+    if (typeof av === "string" && typeof bv === "string") {
       return av.localeCompare(bv) * dir;
     }
-    return (safeNumber(a[key]) - safeNumber(b[key])) * dir;
+    return (av - bv) * dir;
   });
 }
 
@@ -129,7 +190,7 @@ function render() {
   bodyEl.innerHTML = "";
 
   if (!torrents.length) {
-    bodyEl.innerHTML = '<tr><td colspan="6" class="placeholder">No torrents in this view</td></tr>';
+    bodyEl.innerHTML = '<tr><td colspan="9" class="placeholder">No torrents in this view</td></tr>';
   } else {
     for (const torrent of torrents) {
       const row = rowTemplate.content.firstElementChild.cloneNode(true);
@@ -139,6 +200,9 @@ function render() {
       row.dataset.hash = torrent.hash;
       row.querySelector(".name").textContent = torrent.name || torrent.hash;
       row.querySelector(".name").title = torrent.hash;
+      row.querySelector(".added").textContent = formatAdded(torrent.addedAt);
+      row.querySelector(".eta").textContent = formatETA(torrent.etaSeconds);
+      row.querySelector(".ratio").textContent = formatRatio(torrent.ratio);
 
       const stateEl = row.querySelector(".state");
       stateEl.textContent = stateText;
@@ -184,7 +248,10 @@ function keyLabel(key) {
   switch (key) {
     case "name": return "Name";
     case "state": return "State";
+    case "addedAt": return "Added";
     case "progress": return "Done";
+    case "etaSeconds": return "ETA";
+    case "ratio": return "Ratio";
     case "downRate": return "Down";
     case "upRate": return "Up";
     case "sizeBytes": return "Size";
@@ -212,6 +279,11 @@ function renderDetails() {
   detailsStateEl.textContent = stateText;
   detailsProgressEl.value = progress;
   detailsProgressTextEl.textContent = `${Math.round(progress * 100)}%`;
+  detailsAddedEl.textContent = formatAdded(selected.addedAt);
+  detailsETAEl.textContent = formatETA(selected.etaSeconds);
+  detailsRatioEl.textContent = formatRatio(selected.ratio);
+  detailsPeersEl.textContent = String(safeNumber(selected.peers));
+  detailsSeedsEl.textContent = String(safeNumber(selected.seeds));
   detailsDownloadedEl.textContent = formatBytes(safeNumber(selected.doneBytes));
   detailsSizeEl.textContent = formatBytes(safeNumber(selected.sizeBytes));
   detailsDownRateEl.textContent = formatRate(safeNumber(selected.downRate));

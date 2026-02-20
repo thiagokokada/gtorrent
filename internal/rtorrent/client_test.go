@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 )
 
 type mockRPC struct {
@@ -26,8 +27,8 @@ func TestListMapsRows(t *testing.T) {
 				t.Fatalf("unexpected method: %s", method)
 			}
 			return []any{
-				[]any{"h1", "Ubuntu ISO", int64(100), int64(75), int64(10), int64(2), int64(1), int64(0)},
-				[]any{"h2", "Fedora", int64(100), int64(100), int64(0), int64(5), int64(1), int64(1)},
+				[]any{"h1", "Ubuntu ISO", int64(100), int64(75), int64(10), int64(2), int64(1), int64(0), int64(1700000000), int64(0), int64(1500), int64(22), int64(8)},
+				[]any{"h2", "Fedora", int64(100), int64(100), int64(0), int64(5), int64(1), int64(1), int64(0), int64(1700000100), int64(2500), int64(12), int64(40)},
 			}, nil
 		},
 	}
@@ -43,8 +44,20 @@ func TestListMapsRows(t *testing.T) {
 	if items[0].Progress != 0.75 || items[0].State != "downloading" {
 		t.Fatalf("unexpected first torrent mapping: %+v", items[0])
 	}
+	if items[0].ETASeconds != 3 || items[0].Ratio != 1.5 || items[0].Peers != 22 || items[0].Seeds != 8 {
+		t.Fatalf("unexpected first torrent extra mapping: %+v", items[0])
+	}
+	if !items[0].AddedAt.Equal(time.Unix(1700000000, 0).UTC()) {
+		t.Fatalf("unexpected first torrent addedAt: %v", items[0].AddedAt)
+	}
 	if items[1].Progress != 1 || items[1].State != "seeding" {
 		t.Fatalf("unexpected second torrent mapping: %+v", items[1])
+	}
+	if items[1].ETASeconds != 0 || items[1].Ratio != 2.5 || items[1].Peers != 12 || items[1].Seeds != 40 {
+		t.Fatalf("unexpected second torrent extra mapping: %+v", items[1])
+	}
+	if !items[1].AddedAt.Equal(time.Unix(1700000100, 0).UTC()) {
+		t.Fatalf("unexpected second torrent addedAt: %v", items[1].AddedAt)
 	}
 }
 

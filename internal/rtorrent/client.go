@@ -5,7 +5,9 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"strconv"
 	"strings"
+	"time"
 
 	"gtorrent/internal/domain"
 	"gtorrent/internal/rtorrent/xmlrpc"
@@ -40,6 +42,11 @@ func (c *Client) List(ctx context.Context) ([]domain.Torrent, error) {
 		"d.up.rate=",
 		"d.is_active=",
 		"d.complete=",
+		"d.custom=tm_loaded",
+		"d.timestamp.started=",
+		"d.ratio=",
+		"d.peers_connected=",
+		"d.peers_complete=",
 	)
 	if err != nil {
 		return nil, err
@@ -57,8 +64,8 @@ func (c *Client) List(ctx context.Context) ([]domain.Torrent, error) {
 			continue
 		}
 
-		size := asInt64(cols[2])
-		done := asInt64(cols[3])
+		size := asInt64(getCol(cols, 2))
+		done := asInt64(getCol(cols, 3))
 		progress := 0.0
 		if size > 0 {
 			progress = float64(done) / float64(size)
@@ -71,8 +78,8 @@ func (c *Client) List(ctx context.Context) ([]domain.Torrent, error) {
 		}
 		progress = math.Round(progress*1000) / 1000
 
-		active := asBool(cols[6])
-		complete := asBool(cols[7])
+		active := asBool(getCol(cols, 6))
+		complete := asBool(getCol(cols, 7))
 		state := "stopped"
 		switch {
 		case complete && active:
@@ -83,15 +90,26 @@ func (c *Client) List(ctx context.Context) ([]domain.Torrent, error) {
 			state = "downloading"
 		}
 
+		downRate := asInt64(getCol(cols, 4))
+		upRate := asInt64(getCol(cols, 5))
+		addedAt := pickAddedAt(asInt64(getCol(cols, 8)), asInt64(getCol(cols, 9)))
+		ratio := asRatio(getCol(cols, 10))
+		eta := estimateETASeconds(size, done, downRate)
+
 		out = append(out, domain.Torrent{
-			Hash:      asString(cols[0]),
-			Name:      asString(cols[1]),
-			SizeBytes: size,
-			DoneBytes: done,
-			Progress:  progress,
-			State:     state,
-			DownRate:  asInt64(cols[4]),
-			UpRate:    asInt64(cols[5]),
+			Hash:       asString(getCol(cols, 0)),
+			Name:       asString(getCol(cols, 1)),
+			SizeBytes:  size,
+			DoneBytes:  done,
+			Progress:   progress,
+			State:      state,
+			DownRate:   downRate,
+			UpRate:     upRate,
+			AddedAt:    addedAt,
+			ETASeconds: eta,
+			Ratio:      ratio,
+			Peers:      asInt64(getCol(cols, 11)),
+			Seeds:      asInt64(getCol(cols, 12)),
 		})
 	}
 	return out, nil
@@ -188,6 +206,39 @@ func asInt64(v any) int64 {
 	}
 }
 
+func asRatio(v any) float64 {
+	switch t := v.(type) {
+	case int:
+		return float64(t) / 1000
+	case int64:
+		return float64(t) / 1000
+	case float64:
+		if t > 100 {
+			return t / 1000
+		}
+		return t
+	case string:
+		s := strings.TrimSpace(t)
+		if s == "" {
+			return 0
+		}
+		if strings.ContainsAny(s, ".eE") {
+			f, err := strconv.ParseFloat(s, 64)
+			if err == nil {
+				return f
+			}
+			return 0
+		}
+		n, err := strconv.ParseInt(s, 10, 64)
+		if err != nil {
+			return 0
+		}
+		return float64(n) / 1000
+	default:
+		return 0
+	}
+}
+
 func asBool(v any) bool {
 	switch t := v.(type) {
 	case bool:
@@ -204,4 +255,44 @@ func asBool(v any) bool {
 	default:
 		return false
 	}
+}
+
+func getCol(cols []any, idx int) any {
+	if idx < 0 || idx >= len(cols) {
+		return nil
+	}
+	return cols[idx]
+}
+
+func pickAddedAt(loaded, started int64) time.Time {
+	ts := normalizeUnixSeconds(loaded)
+	if ts <= 0 {
+		ts = normalizeUnixSeconds(started)
+	}
+	if ts <= 0 {
+		return time.Time{}
+	}
+	return time.Unix(ts, 0).UTC()
+}
+
+func normalizeUnixSeconds(ts int64) int64 {
+	if ts <= 0 {
+		return 0
+	}
+	// Some deployments expose milliseconds; normalize to seconds.
+	if ts > 1_000_000_000_000 {
+		return ts / 1000
+	}
+	return ts
+}
+
+func estimateETASeconds(size, done, downRate int64) int64 {
+	remaining := size - done
+	if remaining <= 0 {
+		return 0
+	}
+	if downRate <= 0 {
+		return -1
+	}
+	return int64(math.Ceil(float64(remaining) / float64(downRate)))
 }

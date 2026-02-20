@@ -17,6 +17,7 @@
   --row-hover: #dce7f6;
   --row-active: #c8dcf4;
   --table-line: #c6d0df;
+  --control-height: 38px;
 }
 
 * {
@@ -130,12 +131,51 @@ body {
 input[type="url"],
 input[type="file"] {
   width: 100%;
-  min-height: 36px;
+  min-height: var(--control-height);
+  height: var(--control-height);
   padding: 0.4rem 0.52rem;
   border: 1px solid #a6b4c8;
   border-radius: 5px;
   background: #fff;
   font: inherit;
+}
+
+input[type="url"] {
+  line-height: 1.2;
+}
+
+input[type="file"] {
+  padding: 0;
+  line-height: calc(var(--control-height) - 2px);
+}
+
+input[type="file"]::file-selector-button {
+  height: calc(var(--control-height) - 2px);
+  margin-right: 0.55rem;
+  padding: 0 0.72rem;
+  border: 0;
+  border-right: 1px solid #a6b4c8;
+  background: linear-gradient(180deg, #edf3fb 0%, #dce6f4 100%);
+  color: #354c66;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.action-field {
+  display: grid;
+  align-items: end;
+  min-width: 120px;
+}
+
+.action-field span {
+  visibility: hidden;
+}
+
+.action-field button {
+  width: 100%;
+  min-height: var(--control-height);
+  height: var(--control-height);
 }
 
 .toolbar-actions {
@@ -233,7 +273,7 @@ button:disabled {
 table {
   width: 100%;
   border-collapse: collapse;
-  min-width: 760px;
+  min-width: 1080px;
 }
 
 thead th {
@@ -250,7 +290,7 @@ thead th {
   padding: 0.45rem 0.5rem;
   color: #2f445a;
   background: transparent;
-  font-size: 0.8rem;
+  font-size: 0.78rem;
 }
 
 .sort-btn:hover {
@@ -276,10 +316,17 @@ tbody tr.active {
 }
 
 .name {
-  max-width: 420px;
+  max-width: 340px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.added,
+.eta,
+.ratio {
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
 }
 
 .state {
@@ -415,7 +462,7 @@ progress::-moz-progress-bar {
 .metrics {
   margin-top: 0.65rem;
   display: grid;
-  grid-template-columns: repeat(4, minmax(120px, 1fr));
+  grid-template-columns: repeat(3, minmax(140px, 1fr));
   gap: 0.5rem;
 }
 
