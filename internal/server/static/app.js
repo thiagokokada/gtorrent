@@ -1,7 +1,7 @@
 const bodyEl = document.querySelector("#torrents-body");
 const tableEl = document.querySelector("#torrent-table");
+const connectionDotEl = document.querySelector("#connection-dot");
 const messageEl = document.querySelector("#form-message");
-const statusEl = document.querySelector("#status");
 const statsEl = document.querySelector("#global-stats");
 const refreshBtn = document.querySelector("#refresh");
 const openAddBtn = document.querySelector("#open-add");
@@ -73,6 +73,11 @@ const state = {
   filter: "all",
   sortKey: "addedAt",
   sortDir: -1,
+  connectionState: "connecting",
+  connectionError: "",
+  actionMessage: "",
+  actionMessageType: "info",
+  actionMessageToken: 0,
 };
 
 const formatBytes = (bytes) => {
@@ -135,16 +140,56 @@ const getNormalizedState = (torrent) => {
   return "unknown";
 };
 
-const setFormMessage = (text, isError = false) => {
+function setMessage(text, type = "info") {
   messageEl.textContent = text;
-  messageEl.style.color = isError ? "var(--error-text)" : "var(--muted)";
-};
+  messageEl.classList.remove("message-info", "message-ok", "message-error");
+  messageEl.classList.add(`message-${type}`);
+}
 
-const setStatus = (text, isError = false) => {
-  statusEl.textContent = text;
-  statusEl.style.background = isError ? "var(--error-bg)" : "var(--success-bg)";
-  statusEl.style.color = isError ? "var(--error-text)" : "var(--ok-text)";
-};
+function updateConnectionDot() {
+  connectionDotEl.classList.remove("connecting", "online", "offline");
+  connectionDotEl.classList.add(state.connectionState);
+}
+
+function renderStatusMessage() {
+  if (state.connectionState === "offline") {
+    setMessage(state.connectionError || "Connection error", "error");
+    return;
+  }
+
+  if (state.actionMessage) {
+    setMessage(state.actionMessage, state.actionMessageType);
+    return;
+  }
+
+  if (state.connectionState === "online") {
+    setMessage("Connected", "ok");
+    return;
+  }
+
+  setMessage("Connecting...", "info");
+}
+
+function setConnectionState(nextState, connectionError = "") {
+  state.connectionState = nextState;
+  state.connectionError = connectionError;
+  updateConnectionDot();
+  renderStatusMessage();
+}
+
+function setActionMessage(text, isError = false, durationMs = 4500) {
+  state.actionMessage = text;
+  state.actionMessageType = isError ? "error" : "info";
+  const token = ++state.actionMessageToken;
+  renderStatusMessage();
+
+  window.setTimeout(() => {
+    if (state.actionMessageToken !== token) return;
+    state.actionMessage = "";
+    state.actionMessageType = "info";
+    renderStatusMessage();
+  }, durationMs);
+}
 
 const parseJSON = async (response) => {
   try {
@@ -340,10 +385,10 @@ async function fetchTorrents() {
       state.selectedHash = "";
     }
 
-    setStatus("Connected");
+    setConnectionState("online");
     render();
   } catch (error) {
-    setStatus(`Connection error: ${error.message}`, true);
+    setConnectionState("offline", `Connection error: ${error.message}`);
   } finally {
     state.loading = false;
   }
@@ -443,11 +488,11 @@ async function removeSelectedTorrent() {
     if (!response.ok) {
       throw new Error(payload.error || "Remove failed");
     }
-    setFormMessage("Torrent removed");
+    setActionMessage("Torrent removed");
     state.selectedHash = "";
     await fetchTorrents();
   } catch (error) {
-    setFormMessage(error.message, true);
+    setActionMessage(error.message, true, 7000);
     removeSelectedBtn.disabled = false;
   }
 }
@@ -469,10 +514,10 @@ async function toggleSelectedTorrent() {
     if (!response.ok) {
       throw new Error(payload.error || `${action} failed`);
     }
-    setFormMessage(`Torrent ${verb}`);
+    setActionMessage(`Torrent ${verb}`);
     await fetchTorrents();
   } catch (error) {
-    setFormMessage(error.message, true);
+    setActionMessage(error.message, true, 7000);
     updateSelectedControls();
   }
 }
@@ -490,10 +535,10 @@ async function recheckSelectedTorrent() {
     if (!response.ok) {
       throw new Error(payload.error || "recheck failed");
     }
-    setFormMessage("Torrent recheck requested");
+    setActionMessage("Torrent recheck requested");
     await fetchTorrents();
   } catch (error) {
-    setFormMessage(error.message, true);
+    setActionMessage(error.message, true, 7000);
     updateSelectedControls();
   }
 }
@@ -516,7 +561,6 @@ function closeAddDialog() {
 
 addForm.addEventListener("submit", async (event) => {
   event.preventDefault();
-  setFormMessage("");
 
   addBtn.disabled = true;
 
@@ -524,7 +568,7 @@ addForm.addEventListener("submit", async (event) => {
   const file = addForm.torrent.files[0];
 
   if (!magnet && !file) {
-    setFormMessage("Provide a magnet link or select a .torrent file", true);
+    setActionMessage("Provide a magnet link or select a .torrent file", true, 7000);
     addBtn.disabled = false;
     return;
   }
@@ -556,10 +600,10 @@ addForm.addEventListener("submit", async (event) => {
 
     addForm.reset();
     closeAddDialog();
-    setFormMessage("Torrent added");
+    setActionMessage("Torrent added");
     await fetchTorrents();
   } catch (error) {
-    setFormMessage(error.message, true);
+    setActionMessage(error.message, true, 7000);
   } finally {
     addBtn.disabled = false;
   }
@@ -614,5 +658,6 @@ recheckSelectedBtn.addEventListener("click", () => recheckSelectedTorrent());
 removeSelectedBtn.addEventListener("click", () => removeSelectedTorrent());
 
 initializeResizableColumns();
+renderStatusMessage();
 fetchTorrents();
 setInterval(fetchTorrents, REFRESH_INTERVAL_MS);

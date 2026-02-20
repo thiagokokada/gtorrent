@@ -72,8 +72,19 @@ body.col-resizing {
   width: 13px;
   height: 13px;
   border-radius: 50%;
-  background: linear-gradient(180deg, #79d0f7 0%, #2e87c0 100%);
   box-shadow: 0 0 0 2px #204567;
+}
+
+.brand-dot.connecting {
+  background: linear-gradient(180deg, #f5d47c 0%, #c78e32 100%);
+}
+
+.brand-dot.online {
+  background: linear-gradient(180deg, #78dc9b 0%, #23914e 100%);
+}
+
+.brand-dot.offline {
+  background: linear-gradient(180deg, #f08d8d 0%, #af3434 100%);
 }
 
 .brand-wrap h1 {
@@ -96,14 +107,6 @@ body.col-resizing {
 .global-stats {
   font-size: 0.78rem;
   color: #bccbe0;
-}
-
-.status-pill {
-  font-size: 0.74rem;
-  padding: 0.2rem 0.5rem;
-  border-radius: 999px;
-  background: var(--success-bg);
-  color: var(--ok-text);
 }
 
 .controls {
@@ -199,14 +202,37 @@ button:disabled {
 
 .message {
   margin: 0;
-  min-height: 0;
+  min-height: 24px;
   font-size: 0.73rem;
-  color: var(--muted);
-  flex-basis: 100%;
+  color: #3f556d;
+  padding: 0.15rem 0.4rem;
+  border: 1px solid #b9c8da;
+  border-radius: 4px;
+  background: #edf3fc;
 }
 
-.message:empty {
-  display: none;
+.status-message {
+  display: flex;
+  align-items: center;
+}
+
+.message.message-info {
+  color: #3f556d;
+  border-color: #b9c8da;
+  background: #edf3fc;
+}
+
+.message.message-ok {
+  color: #25523a;
+  border-color: #9ecfba;
+  background: #dff3e7;
+}
+
+.message.message-error {
+  color: #7a2b2b;
+  border-color: #d4a2a2;
+  background: #f7dfdf;
+  font-weight: 700;
 }
 
 .table-panel {
