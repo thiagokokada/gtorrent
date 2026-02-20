@@ -2,6 +2,8 @@ const bodyEl = document.querySelector("#torrents-body");
 const tableEl = document.querySelector("#torrent-table");
 const connectionDotEl = document.querySelector("#connection-dot");
 const messageEl = document.querySelector("#form-message");
+const messageTextEl = document.querySelector("#form-message-text");
+const messageCloseEl = document.querySelector("#form-message-close");
 const statsEl = document.querySelector("#global-stats");
 const refreshBtn = document.querySelector("#refresh");
 const openAddBtn = document.querySelector("#open-add");
@@ -65,6 +67,9 @@ const columnEls = new Map(
 const columnWidths = {};
 
 let resizeState = null;
+let messageHideTimer = null;
+let messageVisibleToken = "";
+let dismissedMessageToken = "";
 
 const state = {
   torrents: [],
@@ -78,6 +83,7 @@ const state = {
   actionMessage: "",
   actionMessageType: "info",
   actionMessageToken: 0,
+  actionMessageDurationMs: 4500,
 };
 
 const formatBytes = (bytes) => {
@@ -141,9 +147,56 @@ const getNormalizedState = (torrent) => {
 };
 
 function setMessage(text, type = "info") {
-  messageEl.textContent = text;
+  messageTextEl.textContent = text;
   messageEl.classList.remove("message-info", "message-ok", "message-error");
   messageEl.classList.add(`message-${type}`);
+  messageEl.classList.remove("is-hidden");
+}
+
+function clearMessageHideTimer() {
+  if (messageHideTimer !== null) {
+    window.clearTimeout(messageHideTimer);
+    messageHideTimer = null;
+  }
+}
+
+function hideMessage(tokenToDismiss = "") {
+  clearMessageHideTimer();
+  if (tokenToDismiss) {
+    dismissedMessageToken = tokenToDismiss;
+  }
+  messageVisibleToken = "";
+  messageEl.classList.add("is-hidden");
+}
+
+function scheduleMessageHide(token, durationMs) {
+  clearMessageHideTimer();
+  messageHideTimer = window.setTimeout(() => {
+    if (messageVisibleToken !== token) return;
+    hideMessage(token);
+  }, durationMs);
+}
+
+function getCurrentMessage() {
+  if (state.connectionState === "offline") {
+    const text = state.connectionError || "Connection error";
+    return { text, type: "error", token: `conn:offline:${text}`, autoHideMs: 7000 };
+  }
+
+  if (state.actionMessage) {
+    return {
+      text: state.actionMessage,
+      type: state.actionMessageType,
+      token: `action:${state.actionMessageToken}`,
+      autoHideMs: state.actionMessageDurationMs,
+    };
+  }
+
+  if (state.connectionState === "online") {
+    return { text: "Connected", type: "ok", token: "conn:online", autoHideMs: 4000 };
+  }
+
+  return { text: "Connecting...", type: "info", token: "conn:connecting", autoHideMs: 4000 };
 }
 
 function updateConnectionDot() {
@@ -152,27 +205,28 @@ function updateConnectionDot() {
 }
 
 function renderStatusMessage() {
-  if (state.connectionState === "offline") {
-    setMessage(state.connectionError || "Connection error", "error");
+  const msg = getCurrentMessage();
+  if (!msg) {
+    hideMessage("");
+    return;
+  }
+  if (dismissedMessageToken === msg.token) {
+    hideMessage("");
     return;
   }
 
-  if (state.actionMessage) {
-    setMessage(state.actionMessage, state.actionMessageType);
-    return;
-  }
-
-  if (state.connectionState === "online") {
-    setMessage("Connected", "ok");
-    return;
-  }
-
-  setMessage("Connecting...", "info");
+  messageVisibleToken = msg.token;
+  setMessage(msg.text, msg.type);
+  scheduleMessageHide(msg.token, msg.autoHideMs);
 }
 
 function setConnectionState(nextState, connectionError = "") {
+  const changed = state.connectionState !== nextState || state.connectionError !== connectionError;
   state.connectionState = nextState;
   state.connectionError = connectionError;
+  if (changed) {
+    dismissedMessageToken = "";
+  }
   updateConnectionDot();
   renderStatusMessage();
 }
@@ -180,7 +234,9 @@ function setConnectionState(nextState, connectionError = "") {
 function setActionMessage(text, isError = false, durationMs = 4500) {
   state.actionMessage = text;
   state.actionMessageType = isError ? "error" : "info";
+  state.actionMessageDurationMs = durationMs;
   const token = ++state.actionMessageToken;
+  dismissedMessageToken = "";
   renderStatusMessage();
 
   window.setTimeout(() => {
@@ -615,6 +671,11 @@ cancelAddBtn.addEventListener("click", () => {
 
 openAddBtn.addEventListener("click", () => {
   openAddDialog();
+});
+
+messageCloseEl.addEventListener("click", () => {
+  if (!messageVisibleToken) return;
+  hideMessage(messageVisibleToken);
 });
 
 filterContainer.addEventListener("click", (event) => {
