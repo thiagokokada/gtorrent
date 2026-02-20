@@ -6,6 +6,7 @@ const statsEl = document.querySelector("#global-stats");
 const refreshBtn = document.querySelector("#refresh");
 const openAddBtn = document.querySelector("#open-add");
 const toggleSelectedBtn = document.querySelector("#toggle-selected");
+const recheckSelectedBtn = document.querySelector("#recheck-selected");
 const removeSelectedBtn = document.querySelector("#remove-selected");
 const rowTemplate = document.querySelector("#row-template");
 const filterContainer = document.querySelector("#filters");
@@ -312,12 +313,14 @@ function updateSelectedControls() {
   if (!selected) {
     toggleSelectedBtn.disabled = true;
     toggleSelectedBtn.textContent = "Start";
+    recheckSelectedBtn.disabled = true;
     removeSelectedBtn.disabled = true;
     return;
   }
 
   toggleSelectedBtn.disabled = false;
   toggleSelectedBtn.textContent = canStopTorrent(selected) ? "Stop" : "Start";
+  recheckSelectedBtn.disabled = false;
   removeSelectedBtn.disabled = false;
 }
 
@@ -474,6 +477,27 @@ async function toggleSelectedTorrent() {
   }
 }
 
+async function recheckSelectedTorrent() {
+  const selected = state.torrents.find((torrent) => torrent.hash === state.selectedHash);
+  if (!selected) return;
+
+  recheckSelectedBtn.disabled = true;
+  try {
+    const response = await fetch(`/api/torrents/${encodeURIComponent(selected.hash)}/recheck`, {
+      method: "POST",
+    });
+    const payload = await parseJSON(response);
+    if (!response.ok) {
+      throw new Error(payload.error || "recheck failed");
+    }
+    setFormMessage("Torrent recheck requested");
+    await fetchTorrents();
+  } catch (error) {
+    setFormMessage(error.message, true);
+    updateSelectedControls();
+  }
+}
+
 function openAddDialog() {
   if (typeof addDialog.showModal === "function") {
     addDialog.showModal();
@@ -586,6 +610,7 @@ window.addEventListener("resize", syncTableWidth);
 
 refreshBtn.addEventListener("click", () => fetchTorrents());
 toggleSelectedBtn.addEventListener("click", () => toggleSelectedTorrent());
+recheckSelectedBtn.addEventListener("click", () => recheckSelectedTorrent());
 removeSelectedBtn.addEventListener("click", () => removeSelectedTorrent());
 
 initializeResizableColumns();

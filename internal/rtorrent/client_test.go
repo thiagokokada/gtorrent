@@ -129,3 +129,21 @@ func TestStopCallsStop(t *testing.T) {
 		t.Fatalf("unexpected calls: %v", rpc.calls)
 	}
 }
+
+func TestRecheckCallsCheckHash(t *testing.T) {
+	rpc := &mockRPC{
+		fn: func(method string, _ ...any) (any, error) {
+			if method == "d.check_hash" {
+				return true, nil
+			}
+			return nil, nil
+		},
+	}
+	client := NewClient(rpc)
+	if err := client.Recheck(context.Background(), "abc"); err != nil {
+		t.Fatalf("Recheck() error = %v", err)
+	}
+	if len(rpc.calls) < 1 || rpc.calls[0] != "d.check_hash" {
+		t.Fatalf("unexpected calls: %v", rpc.calls)
+	}
+}

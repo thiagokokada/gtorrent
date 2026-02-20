@@ -28,6 +28,7 @@ type Service interface {
 	Remove(ctx context.Context, hash string, deleteData bool) error
 	Start(ctx context.Context, hash string) error
 	Stop(ctx context.Context, hash string) error
+	Recheck(ctx context.Context, hash string) error
 }
 
 type Server struct {
@@ -109,6 +110,11 @@ func (s *Server) handleTorrentByHash(w http.ResponseWriter, r *http.Request) {
 		}
 	case "stop":
 		if err := s.svc.Stop(r.Context(), hash); err != nil {
+			writeError(w, http.StatusBadGateway, err.Error())
+			return
+		}
+	case "recheck":
+		if err := s.svc.Recheck(r.Context(), hash); err != nil {
 			writeError(w, http.StatusBadGateway, err.Error())
 			return
 		}

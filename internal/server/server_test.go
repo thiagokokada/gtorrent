@@ -20,6 +20,7 @@ type mockService struct {
 	removeFn    func(context.Context, string, bool) error
 	startFn     func(context.Context, string) error
 	stopFn      func(context.Context, string) error
+	recheckFn   func(context.Context, string) error
 }
 
 func (m *mockService) List(ctx context.Context) ([]domain.Torrent, error) {
@@ -40,6 +41,9 @@ func (m *mockService) Start(ctx context.Context, hash string) error {
 func (m *mockService) Stop(ctx context.Context, hash string) error {
 	return m.stopFn(ctx, hash)
 }
+func (m *mockService) Recheck(ctx context.Context, hash string) error {
+	return m.recheckFn(ctx, hash)
+}
 
 func TestListEndpoint(t *testing.T) {
 	s, err := New(&mockService{
@@ -51,6 +55,7 @@ func TestListEndpoint(t *testing.T) {
 		removeFn:    func(context.Context, string, bool) error { return nil },
 		startFn:     func(context.Context, string) error { return nil },
 		stopFn:      func(context.Context, string) error { return nil },
+		recheckFn:   func(context.Context, string) error { return nil },
 	})
 	if err != nil {
 		t.Fatalf("New() error = %v", err)
@@ -89,6 +94,7 @@ func TestAddMagnetJSON(t *testing.T) {
 		removeFn:  func(context.Context, string, bool) error { return nil },
 		startFn:   func(context.Context, string) error { return nil },
 		stopFn:    func(context.Context, string) error { return nil },
+		recheckFn: func(context.Context, string) error { return nil },
 	})
 	if err != nil {
 		t.Fatalf("New() error = %v", err)
@@ -122,6 +128,9 @@ func TestAddMultipartTorrent(t *testing.T) {
 		removeFn: func(context.Context, string, bool) error { return nil },
 		startFn:  func(context.Context, string) error { return nil },
 		stopFn:   func(context.Context, string) error { return nil },
+		recheckFn: func(context.Context, string) error {
+			return nil
+		},
 	})
 	if err != nil {
 		t.Fatalf("New() error = %v", err)
@@ -164,6 +173,9 @@ func TestDeleteTorrent(t *testing.T) {
 		},
 		startFn: func(context.Context, string) error { return nil },
 		stopFn:  func(context.Context, string) error { return nil },
+		recheckFn: func(context.Context, string) error {
+			return nil
+		},
 	})
 	if err != nil {
 		t.Fatalf("New() error = %v", err)
@@ -196,6 +208,9 @@ func TestStartTorrent(t *testing.T) {
 			return nil
 		},
 		stopFn: func(context.Context, string) error { return nil },
+		recheckFn: func(context.Context, string) error {
+			return nil
+		},
 	})
 	if err != nil {
 		t.Fatalf("New() error = %v", err)
@@ -228,6 +243,7 @@ func TestStopTorrent(t *testing.T) {
 			}
 			return nil
 		},
+		recheckFn: func(context.Context, string) error { return nil },
 	})
 	if err != nil {
 		t.Fatalf("New() error = %v", err)
@@ -242,5 +258,38 @@ func TestStopTorrent(t *testing.T) {
 	}
 	if !called {
 		t.Fatalf("expected Stop call")
+	}
+}
+
+func TestRecheckTorrent(t *testing.T) {
+	called := false
+	s, err := New(&mockService{
+		listFn:      func(context.Context) ([]domain.Torrent, error) { return nil, nil },
+		addMagnetFn: func(context.Context, string) error { return nil },
+		addFileFn:   func(context.Context, []byte, string) error { return nil },
+		removeFn:    func(context.Context, string, bool) error { return nil },
+		startFn:     func(context.Context, string) error { return nil },
+		stopFn:      func(context.Context, string) error { return nil },
+		recheckFn: func(_ context.Context, hash string) error {
+			called = true
+			if hash != "abc" {
+				t.Fatalf("unexpected hash=%q", hash)
+			}
+			return nil
+		},
+	})
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/api/torrents/abc/recheck", nil)
+	rr := httptest.NewRecorder()
+	s.Handler().ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d, body=%s", rr.Code, rr.Body.String())
+	}
+	if !called {
+		t.Fatalf("expected Recheck call")
 	}
 }

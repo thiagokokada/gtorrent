@@ -21,6 +21,7 @@ type Service interface {
 	Remove(ctx context.Context, hash string, deleteData bool) error
 	Start(ctx context.Context, hash string) error
 	Stop(ctx context.Context, hash string) error
+	Recheck(ctx context.Context, hash string) error
 }
 
 // Client is an rTorrent service backed by XML-RPC methods.
@@ -203,6 +204,26 @@ func (c *Client) Stop(ctx context.Context, hash string) error {
 		return nil
 	}
 	return fmt.Errorf("stop torrent %s failed: %w", hash, stopErr)
+}
+
+func (c *Client) Recheck(ctx context.Context, hash string) error {
+	hash = strings.TrimSpace(hash)
+	if hash == "" {
+		return errors.New("hash is required")
+	}
+
+	var firstErr error
+	for _, method := range []string{"d.check_hash", "d.check_hash="} {
+		_, err := c.rpc.Call(ctx, method, hash)
+		if err == nil {
+			return nil
+		}
+		if firstErr == nil {
+			firstErr = err
+		}
+	}
+
+	return fmt.Errorf("recheck torrent %s failed: %w", hash, firstErr)
 }
 
 func asString(v any) string {
