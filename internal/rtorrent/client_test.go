@@ -90,3 +90,42 @@ func TestRemoveCallsErase(t *testing.T) {
 		t.Fatalf("unexpected calls: %v", rpc.calls)
 	}
 }
+
+func TestStartCallsOpenThenStart(t *testing.T) {
+	rpc := &mockRPC{
+		fn: func(method string, _ ...any) (any, error) {
+			if method == "d.open" {
+				return nil, nil
+			}
+			if method == "d.start" {
+				return true, nil
+			}
+			return nil, nil
+		},
+	}
+	client := NewClient(rpc)
+	if err := client.Start(context.Background(), "abc"); err != nil {
+		t.Fatalf("Start() error = %v", err)
+	}
+	if len(rpc.calls) < 2 || rpc.calls[0] != "d.open" || rpc.calls[1] != "d.start" {
+		t.Fatalf("unexpected calls: %v", rpc.calls)
+	}
+}
+
+func TestStopCallsStop(t *testing.T) {
+	rpc := &mockRPC{
+		fn: func(method string, _ ...any) (any, error) {
+			if method == "d.stop" {
+				return true, nil
+			}
+			return nil, nil
+		},
+	}
+	client := NewClient(rpc)
+	if err := client.Stop(context.Background(), "abc"); err != nil {
+		t.Fatalf("Stop() error = %v", err)
+	}
+	if len(rpc.calls) < 1 || rpc.calls[0] != "d.stop" {
+		t.Fatalf("unexpected calls: %v", rpc.calls)
+	}
+}

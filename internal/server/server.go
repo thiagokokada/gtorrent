@@ -26,6 +26,8 @@ type Service interface {
 	AddMagnet(ctx context.Context, magnet string) error
 	AddTorrent(ctx context.Context, data []byte, filename string) error
 	Remove(ctx context.Context, hash string, deleteData bool) error
+	Start(ctx context.Context, hash string) error
+	Stop(ctx context.Context, hash string) error
 }
 
 type Server struct {
@@ -66,20 +68,55 @@ func (s *Server) handleTorrents(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleTorrentByHash(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodDelete {
-		writeMethodNotAllowed(w, http.MethodDelete)
-		return
-	}
-	hash := strings.TrimPrefix(path.Clean(r.URL.Path), "/api/torrents/")
-	if hash == "" || hash == "." || hash == "/" {
+	rawPath := strings.TrimPrefix(path.Clean(r.URL.Path), "/api/torrents/")
+	rawPath = strings.Trim(rawPath, "/")
+	if rawPath == "" || rawPath == "." {
 		writeError(w, http.StatusBadRequest, "torrent hash is required")
 		return
 	}
-	deleteData := strings.EqualFold(r.URL.Query().Get("deleteData"), "true")
-	if err := s.svc.Remove(r.Context(), hash, deleteData); err != nil {
-		writeError(w, http.StatusBadGateway, err.Error())
+
+	parts := strings.Split(rawPath, "/")
+	hash := parts[0]
+	if hash == "" || hash == "." {
+		writeError(w, http.StatusBadRequest, "torrent hash is required")
 		return
 	}
+
+	if len(parts) == 1 {
+		if r.Method != http.MethodDelete {
+			writeMethodNotAllowed(w, http.MethodDelete)
+			return
+		}
+		deleteData := strings.EqualFold(r.URL.Query().Get("deleteData"), "true")
+		if err := s.svc.Remove(r.Context(), hash, deleteData); err != nil {
+			writeError(w, http.StatusBadGateway, err.Error())
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+		return
+	}
+
+	if len(parts) != 2 || r.Method != http.MethodPost {
+		writeMethodNotAllowed(w, http.MethodPost)
+		return
+	}
+
+	switch parts[1] {
+	case "start":
+		if err := s.svc.Start(r.Context(), hash); err != nil {
+			writeError(w, http.StatusBadGateway, err.Error())
+			return
+		}
+	case "stop":
+		if err := s.svc.Stop(r.Context(), hash); err != nil {
+			writeError(w, http.StatusBadGateway, err.Error())
+			return
+		}
+	default:
+		http.NotFound(w, r)
+		return
+	}
+
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 }
 

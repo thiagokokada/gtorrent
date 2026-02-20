@@ -4,6 +4,7 @@ const messageEl = document.querySelector("#form-message");
 const statusEl = document.querySelector("#status");
 const statsEl = document.querySelector("#global-stats");
 const refreshBtn = document.querySelector("#refresh");
+const toggleSelectedBtn = document.querySelector("#toggle-selected");
 const removeSelectedBtn = document.querySelector("#remove-selected");
 const rowTemplate = document.querySelector("#row-template");
 const filterContainer = document.querySelector("#filters");
@@ -160,6 +161,25 @@ function getVisibleTorrents() {
   });
 }
 
+function canStopTorrent(torrent) {
+  const state = getNormalizedState(torrent);
+  return state === "downloading" || state === "seeding";
+}
+
+function updateSelectedControls() {
+  const selected = state.torrents.find((torrent) => torrent.hash === state.selectedHash);
+  if (!selected) {
+    toggleSelectedBtn.disabled = true;
+    toggleSelectedBtn.textContent = "Start";
+    removeSelectedBtn.disabled = true;
+    return;
+  }
+
+  toggleSelectedBtn.disabled = false;
+  toggleSelectedBtn.textContent = canStopTorrent(selected) ? "Stop" : "Start";
+  removeSelectedBtn.disabled = false;
+}
+
 async function fetchTorrents() {
   if (state.loading) return;
   state.loading = true;
@@ -227,7 +247,7 @@ function render() {
     }
   }
 
-  removeSelectedBtn.disabled = !state.selectedHash;
+  updateSelectedControls();
   renderDetails();
   updateGlobalStats();
   renderSortHeaders();
@@ -316,6 +336,31 @@ async function removeSelectedTorrent() {
   }
 }
 
+async function toggleSelectedTorrent() {
+  const selected = state.torrents.find((torrent) => torrent.hash === state.selectedHash);
+  if (!selected) return;
+
+  const stop = canStopTorrent(selected);
+  const action = stop ? "stop" : "start";
+  const verb = stop ? "stopped" : "started";
+
+  toggleSelectedBtn.disabled = true;
+  try {
+    const response = await fetch(`/api/torrents/${encodeURIComponent(selected.hash)}/${action}`, {
+      method: "POST",
+    });
+    const payload = await parseJSON(response);
+    if (!response.ok) {
+      throw new Error(payload.error || `${action} failed`);
+    }
+    setFormMessage(`Torrent ${verb}`);
+    await fetchTorrents();
+  } catch (error) {
+    setFormMessage(error.message, true);
+    updateSelectedControls();
+  }
+}
+
 addForm.addEventListener("submit", async (event) => {
   event.preventDefault();
   setFormMessage("");
@@ -397,6 +442,7 @@ for (const button of sortButtons) {
 }
 
 refreshBtn.addEventListener("click", () => fetchTorrents());
+toggleSelectedBtn.addEventListener("click", () => toggleSelectedTorrent());
 removeSelectedBtn.addEventListener("click", () => removeSelectedTorrent());
 
 fetchTorrents();

@@ -19,6 +19,8 @@ type Service interface {
 	AddMagnet(ctx context.Context, magnet string) error
 	AddTorrent(ctx context.Context, data []byte, filename string) error
 	Remove(ctx context.Context, hash string, deleteData bool) error
+	Start(ctx context.Context, hash string) error
+	Stop(ctx context.Context, hash string) error
 }
 
 // Client is an rTorrent service backed by XML-RPC methods.
@@ -168,6 +170,39 @@ func (c *Client) Remove(ctx context.Context, hash string, deleteData bool) error
 		return fmt.Errorf("remove torrent: %w", err)
 	}
 	return nil
+}
+
+func (c *Client) Start(ctx context.Context, hash string) error {
+	hash = strings.TrimSpace(hash)
+	if hash == "" {
+		return errors.New("hash is required")
+	}
+
+	_, _ = c.rpc.Call(ctx, "d.open", hash)
+	_, startErr := c.rpc.Call(ctx, "d.start", hash)
+	if startErr == nil {
+		return nil
+	}
+	if _, resumeErr := c.rpc.Call(ctx, "d.resume", hash); resumeErr == nil {
+		return nil
+	}
+	return fmt.Errorf("start torrent %s failed: %w", hash, startErr)
+}
+
+func (c *Client) Stop(ctx context.Context, hash string) error {
+	hash = strings.TrimSpace(hash)
+	if hash == "" {
+		return errors.New("hash is required")
+	}
+
+	_, stopErr := c.rpc.Call(ctx, "d.stop", hash)
+	if stopErr == nil {
+		return nil
+	}
+	if _, err := c.rpc.Call(ctx, "d.pause", hash); err == nil {
+		return nil
+	}
+	return fmt.Errorf("stop torrent %s failed: %w", hash, stopErr)
 }
 
 func asString(v any) string {
