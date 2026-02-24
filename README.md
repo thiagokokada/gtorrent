@@ -18,6 +18,7 @@ No Node.js or frontend build tooling is required. The UI is static HTML/CSS/JS s
 
 ## Project Layout
 
+- `cmd/assetgen`: `go generate` helper that downloads and checksum-verifies vendored frontend assets
 - `cmd/gtorrent`: application entrypoint
 - `internal/config`: env/flag configuration
 - `internal/domain`: shared domain models
@@ -86,6 +87,16 @@ Flags and env vars are both supported:
 
 ```bash
 CGO_ENABLED=0 GOCACHE=/tmp/go-cache go test ./...
+```
+
+## Frontend Assets
+
+Frontend dependencies are vendored under `internal/server/static/vendor` so the app works without internet access.
+
+Refresh/check these files with:
+
+```bash
+CGO_ENABLED=0 GOCACHE=/tmp/go-cache go generate ./internal/server
 ```
 
 ## Notes
