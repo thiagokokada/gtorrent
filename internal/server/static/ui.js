@@ -71,10 +71,12 @@
       text,
       kind: kind || "info",
     };
-    transientTimer = window.setTimeout(function () {
-      clearTransientMessage();
-      renderStatusMessage();
-    }, durationMs || 4500);
+    if (transientMessage.kind !== "error") {
+      transientTimer = window.setTimeout(function () {
+        clearTransientMessage();
+        renderStatusMessage();
+      }, durationMs || 4500);
+    }
     dismissedMessageToken = "";
     renderStatusMessage();
   }
@@ -142,22 +144,13 @@
   }
 
   function resolveStatusMessage() {
-    if (transientMessage) {
-      return {
-        text: transientMessage.text,
-        kind: transientMessage.kind,
-        token: "transient:" + transientMessage.kind + ":" + transientMessage.text,
-        autoHideMs: 4500,
-      };
-    }
-
     if (connectionState === "offline") {
       const text = connectionError || "Connection error";
       return {
         text,
         kind: "error",
         token: "conn:offline:" + text,
-        autoHideMs: 7000,
+        autoHideMs: 0,
       };
     }
 
@@ -167,7 +160,16 @@
         text,
         kind: "error",
         token: "backend:error:" + backendError,
-        autoHideMs: 7000,
+        autoHideMs: 0,
+      };
+    }
+
+    if (transientMessage) {
+      return {
+        text: transientMessage.text,
+        kind: transientMessage.kind,
+        token: "transient:" + transientMessage.kind + ":" + transientMessage.text,
+        autoHideMs: transientMessage.kind === "error" ? 0 : 4500,
       };
     }
 
