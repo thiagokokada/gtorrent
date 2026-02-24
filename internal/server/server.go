@@ -346,6 +346,9 @@ func (s *Server) writeLiveUpdate(w io.Writer, flusher http.Flusher, ctx context.
 		if writeErr := writeSSEHTML(w, flusher, "table", tableHTML); writeErr != nil {
 			return writeErr
 		}
+		if writeErr := writeSSEText(w, flusher, "backend-error", err.Error()); writeErr != nil {
+			return writeErr
+		}
 		return nil
 	}
 
@@ -361,6 +364,9 @@ func (s *Server) writeLiveUpdate(w io.Writer, flusher http.Flusher, ctx context.
 		return err
 	}
 	if err := writeSSEHTML(w, flusher, "table", tableHTML); err != nil {
+		return err
+	}
+	if err := writeSSEText(w, flusher, "backend-ok", "ok"); err != nil {
 		return err
 	}
 	return nil
@@ -729,6 +735,24 @@ func writeSSEHTML(w io.Writer, flusher http.Flusher, event, html string) error {
 		}
 	}
 	for _, line := range strings.Split(html, "\n") {
+		if _, err := fmt.Fprintf(w, "data: %s\n", line); err != nil {
+			return err
+		}
+	}
+	if _, err := io.WriteString(w, "\n"); err != nil {
+		return err
+	}
+	flusher.Flush()
+	return nil
+}
+
+func writeSSEText(w io.Writer, flusher http.Flusher, event, text string) error {
+	if event != "" {
+		if _, err := fmt.Fprintf(w, "event: %s\n", event); err != nil {
+			return err
+		}
+	}
+	for _, line := range strings.Split(text, "\n") {
 		if _, err := fmt.Fprintf(w, "data: %s\n", line); err != nil {
 			return err
 		}

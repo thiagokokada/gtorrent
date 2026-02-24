@@ -1,5 +1,5 @@
 {{define "dashboard"}}
-<section id="dashboard" class="dashboard" hx-ext="sse" sse-connect="{{.StreamURL}}">
+<section id="dashboard" class="dashboard app-shell" hx-ext="sse" sse-connect="{{.StreamURL}}">
   <form id="view-state" hidden>
     <input type="hidden" name="q" value="{{.Params.Query}}">
     <input type="hidden" name="filter" id="filter-input" value="{{.Params.Filter}}">
@@ -7,6 +7,8 @@
     <input type="hidden" name="dir" id="dir-input" value="{{.Params.Dir}}">
     <input type="hidden" name="selected" id="selected-input" value="{{.Params.Selected}}">
   </form>
+  <div id="backend-error-sink" hidden sse-swap="backend-error" hx-swap="innerHTML"></div>
+  <div id="backend-ok-sink" hidden sse-swap="backend-ok" hx-swap="innerHTML"></div>
 
   <header class="topbar">
     <div class="brand-wrap">
@@ -59,8 +61,8 @@
     </div>
   </section>
 
-  <div id="form-message" class="message status-message {{if not .Flash.Message}}is-hidden{{end}} {{if .Flash.Message}}message-{{.Flash.Kind}}{{end}}" role="status" aria-live="polite">
-    <span id="form-message-text">{{.Flash.Message}}</span>
+  <div id="form-message" class="message status-message {{if .Flash.Message}}message-{{.Flash.Kind}}{{else}}message-info{{end}}" data-flash="{{if .Flash.Message}}1{{else}}0{{end}}" role="status" aria-live="polite">
+    <span id="form-message-text">{{if .Flash.Message}}{{.Flash.Message}}{{else}}Connecting...{{end}}</span>
     <button type="button" id="form-message-close" class="message-close" aria-label="Dismiss message">x</button>
   </div>
 

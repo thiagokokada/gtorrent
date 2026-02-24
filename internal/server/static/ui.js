@@ -1,6 +1,14 @@
 (function () {
   const CONNECTION_STATES = ["connecting", "online", "offline"];
+
   let connectionState = "connecting";
+  let connectionError = "";
+  let backendError = "";
+  let currentMessageToken = "";
+  let dismissedMessageToken = "";
+  let transientMessage = null;
+  let transientTimer = 0;
+  let messageHideTimer = 0;
 
   function dashboardEl() {
     return document.querySelector("#dashboard");
@@ -14,40 +22,208 @@
     return document.querySelector("#" + id);
   }
 
+  function messageBoxEl() {
+    return document.querySelector("#form-message");
+  }
+
+  function messageTextEl() {
+    return document.querySelector("#form-message-text");
+  }
+
   function selectedHash() {
     const input = inputEl("selected-input");
     return input ? input.value.trim() : "";
   }
 
-  function setConnectionState(next) {
-    connectionState = next;
-    const dot = document.querySelector("#connection-dot");
-    if (!dot) {
-      return;
-    }
-    for (const state of CONNECTION_STATES) {
-      dot.classList.remove(state);
-    }
-    dot.classList.add(next);
-  }
-
-  function setMessage(text, kind) {
-    const box = document.querySelector("#form-message");
-    const textEl = document.querySelector("#form-message-text");
-    if (!box || !textEl) {
-      return;
-    }
-    textEl.textContent = text;
-    box.classList.remove("is-hidden", "message-info", "message-ok", "message-error");
-    box.classList.add("message-" + kind);
-  }
-
-  function hideMessage() {
-    const box = document.querySelector("#form-message");
+  function hideMessageBox() {
+    const box = messageBoxEl();
     if (!box) {
       return;
     }
     box.classList.add("is-hidden");
+  }
+
+  function setConnectionDot(state) {
+    const dot = document.querySelector("#connection-dot");
+    if (!dot) {
+      return;
+    }
+    for (const value of CONNECTION_STATES) {
+      dot.classList.remove(value);
+    }
+    dot.classList.add(state);
+  }
+
+  function clearTransientMessage() {
+    transientMessage = null;
+    if (transientTimer !== 0) {
+      window.clearTimeout(transientTimer);
+      transientTimer = 0;
+    }
+  }
+
+  function setTransientMessage(text, kind, durationMs) {
+    if (!text) {
+      return;
+    }
+    clearTransientMessage();
+    transientMessage = {
+      text,
+      kind: kind || "info",
+    };
+    transientTimer = window.setTimeout(function () {
+      clearTransientMessage();
+      renderStatusMessage();
+    }, durationMs || 4500);
+    dismissedMessageToken = "";
+    renderStatusMessage();
+  }
+
+  function clearMessageHideTimer() {
+    if (messageHideTimer !== 0) {
+      window.clearTimeout(messageHideTimer);
+      messageHideTimer = 0;
+    }
+  }
+
+  function scheduleMessageHide(token, durationMs) {
+    clearMessageHideTimer();
+    if (!durationMs || durationMs <= 0) {
+      return;
+    }
+    messageHideTimer = window.setTimeout(function () {
+      if (currentMessageToken !== token) {
+        return;
+      }
+      dismissedMessageToken = token;
+      hideMessageBox();
+    }, durationMs);
+  }
+
+  function setBackendError(text) {
+    const next = (text || "").trim();
+    if (backendError === next) {
+      return;
+    }
+    backendError = next;
+    dismissedMessageToken = "";
+    renderStatusMessage();
+  }
+
+  function clearBackendError() {
+    if (backendError === "") {
+      return;
+    }
+    backendError = "";
+    renderStatusMessage();
+  }
+
+  function setConnectionState(state, err) {
+    connectionState = state;
+    connectionError = state === "offline" ? (err || "Connection error") : "";
+    if (state !== "offline") {
+      dismissedMessageToken = "";
+    }
+    setConnectionDot(connectionState);
+    renderStatusMessage();
+  }
+
+  function resolveStatusMessage() {
+    if (transientMessage) {
+      return {
+        text: transientMessage.text,
+        kind: transientMessage.kind,
+        token: "transient:" + transientMessage.kind + ":" + transientMessage.text,
+        autoHideMs: 4500,
+      };
+    }
+
+    if (connectionState === "offline") {
+      const text = connectionError || "Connection error";
+      return {
+        text,
+        kind: "error",
+        token: "conn:offline:" + text,
+        autoHideMs: 7000,
+      };
+    }
+
+    if (backendError !== "") {
+      const text = "rTorrent error: " + backendError;
+      return {
+        text,
+        kind: "error",
+        token: "backend:error:" + backendError,
+        autoHideMs: 7000,
+      };
+    }
+
+    if (connectionState === "connecting") {
+      return {
+        text: "Connecting...",
+        kind: "info",
+        token: "conn:connecting",
+        autoHideMs: 4000,
+      };
+    }
+
+    return {
+      text: "Connected",
+      kind: "ok",
+      token: "conn:online",
+      autoHideMs: 4000,
+    };
+  }
+
+  function renderStatusMessage() {
+    const box = messageBoxEl();
+    const textEl = messageTextEl();
+    if (!box || !textEl) {
+      return;
+    }
+
+    const msg = resolveStatusMessage();
+    currentMessageToken = msg.token;
+
+    if (dismissedMessageToken === msg.token) {
+      clearMessageHideTimer();
+      hideMessageBox();
+      return;
+    }
+
+    textEl.textContent = msg.text;
+    box.dataset.flash = "0";
+    box.classList.remove("is-hidden", "message-info", "message-ok", "message-error");
+    box.classList.add("message-" + msg.kind);
+    scheduleMessageHide(msg.token, msg.autoHideMs || 0);
+  }
+
+  function captureFlashMessage() {
+    const box = messageBoxEl();
+    const textEl = messageTextEl();
+    if (!box || !textEl) {
+      return false;
+    }
+    if (box.dataset.flash !== "1") {
+      return false;
+    }
+
+    const text = textEl.textContent.trim();
+    if (text === "") {
+      box.dataset.flash = "0";
+      return false;
+    }
+
+    let kind = "info";
+    if (box.classList.contains("message-error")) {
+      kind = "error";
+    } else if (box.classList.contains("message-ok")) {
+      kind = "ok";
+    }
+
+    box.dataset.flash = "0";
+    setTransientMessage(text, kind, 5500);
+    return true;
   }
 
   function viewValues() {
@@ -270,11 +446,27 @@
     syncActionButtons();
     syncFilterButtons();
     syncSortLabels();
-    setConnectionState(connectionState);
+    setConnectionDot(connectionState);
+    if (!captureFlashMessage()) {
+      renderStatusMessage();
+    }
   }
 
   function eventElement(event) {
     return event.target instanceof Element ? event.target : null;
+  }
+
+  function requestErrorMessage(event) {
+    const detail = event.detail || {};
+    const xhr = detail.xhr;
+    if (!xhr) {
+      return "Connection error";
+    }
+    const code = xhr.status || 0;
+    if (code > 0) {
+      return "Connection error: HTTP " + String(code);
+    }
+    return "Connection error";
   }
 
   document.addEventListener("click", function (event) {
@@ -332,7 +524,8 @@
     }
 
     if (target.closest("#form-message-close")) {
-      hideMessage();
+      dismissedMessageToken = currentMessageToken;
+      hideMessageBox();
     }
   });
 
@@ -352,7 +545,7 @@
     }
 
     event.preventDefault();
-    setMessage("provide a magnet link or a .torrent file", "error");
+    setTransientMessage("provide a magnet link or a .torrent file", "error", 7000);
   });
 
   document.body.addEventListener("htmx:sseOpen", function (event) {
@@ -365,21 +558,21 @@
   document.body.addEventListener("htmx:sseError", function (event) {
     const target = eventElement(event);
     if (target && target.closest("#dashboard")) {
-      setConnectionState("offline");
+      setConnectionState("offline", "Connection error: SSE stream disconnected");
     }
   });
 
   document.body.addEventListener("htmx:sseClose", function (event) {
     const target = eventElement(event);
     if (target && target.closest("#dashboard")) {
-      setConnectionState("offline");
+      setConnectionState("offline", "Connection error: SSE stream closed");
     }
   });
 
   document.body.addEventListener("htmx:responseError", function (event) {
     const target = event.detail && event.detail.target;
     if (target && target.closest && target.closest("#dashboard")) {
-      setConnectionState("offline");
+      setConnectionState("offline", requestErrorMessage(event));
     }
   });
 
@@ -395,6 +588,18 @@
     if (!target) {
       return;
     }
+
+    if (target.id === "backend-error-sink") {
+      const text = target.textContent.trim();
+      setBackendError(text || "unable to query rTorrent");
+      return;
+    }
+
+    if (target.id === "backend-ok-sink") {
+      clearBackendError();
+      return;
+    }
+
     if (target.id === "dashboard" || target.id === "torrents-body") {
       syncDashboard();
     }
