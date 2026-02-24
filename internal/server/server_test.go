@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/thiagokokada/gtorrent/internal/domain"
 )
@@ -291,5 +292,82 @@ func TestRecheckTorrent(t *testing.T) {
 	}
 	if !called {
 		t.Fatalf("expected Recheck call")
+	}
+}
+
+func TestTorrentStreamEndpoint(t *testing.T) {
+	oldPollInterval := streamPollInterval
+	oldKeepaliveInterval := streamKeepaliveInterval
+	streamPollInterval = time.Hour
+	streamKeepaliveInterval = time.Hour
+	defer func() {
+		streamPollInterval = oldPollInterval
+		streamKeepaliveInterval = oldKeepaliveInterval
+	}()
+
+	s, err := New(&mockService{
+		listFn: func(context.Context) ([]domain.Torrent, error) {
+			return []domain.Torrent{{Hash: "a", Name: "n"}}, nil
+		},
+		addMagnetFn: func(context.Context, string) error { return nil },
+		addFileFn:   func(context.Context, []byte, string) error { return nil },
+		removeFn:    func(context.Context, string, bool) error { return nil },
+		startFn:     func(context.Context, string) error { return nil },
+		stopFn:      func(context.Context, string) error { return nil },
+		recheckFn:   func(context.Context, string) error { return nil },
+	})
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	req := httptest.NewRequest(http.MethodGet, "/api/torrents/stream", nil).WithContext(ctx)
+	rr := httptest.NewRecorder()
+	s.Handler().ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d, body=%s", rr.Code, rr.Body.String())
+	}
+	if got := rr.Header().Get("Content-Type"); !strings.HasPrefix(got, "text/event-stream") {
+		t.Fatalf("content-type = %q", got)
+	}
+
+	body := rr.Body.String()
+	if !strings.Contains(body, "retry: 3000") {
+		t.Fatalf("missing retry frame: %q", body)
+	}
+	if !strings.Contains(body, "event: torrents") {
+		t.Fatalf("missing torrents event: %q", body)
+	}
+	if !strings.Contains(body, `"hash":"a"`) {
+		t.Fatalf("missing torrent payload: %q", body)
+	}
+}
+
+func TestTorrentStreamMethodNotAllowed(t *testing.T) {
+	s, err := New(&mockService{
+		listFn:      func(context.Context) ([]domain.Torrent, error) { return nil, nil },
+		addMagnetFn: func(context.Context, string) error { return nil },
+		addFileFn:   func(context.Context, []byte, string) error { return nil },
+		removeFn:    func(context.Context, string, bool) error { return nil },
+		startFn:     func(context.Context, string) error { return nil },
+		stopFn:      func(context.Context, string) error { return nil },
+		recheckFn:   func(context.Context, string) error { return nil },
+	})
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/api/torrents/stream", nil)
+	rr := httptest.NewRecorder()
+	s.Handler().ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusMethodNotAllowed {
+		t.Fatalf("status = %d, body=%s", rr.Code, rr.Body.String())
+	}
+	if allow := rr.Header().Get("Allow"); allow != http.MethodGet {
+		t.Fatalf("allow = %q", allow)
 	}
 }

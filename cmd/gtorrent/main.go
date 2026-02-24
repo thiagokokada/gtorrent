@@ -51,8 +51,9 @@ func main() {
 		Handler:           srv.Handler(),
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       30 * time.Second,
-		WriteTimeout:      30 * time.Second,
-		IdleTimeout:       60 * time.Second,
+		// WriteTimeout must be unset for long-lived SSE responses.
+		WriteTimeout: 0,
+		IdleTimeout:  60 * time.Second,
 	}
 
 	go func() {
@@ -76,10 +77,15 @@ func main() {
 	defer stop()
 	<-ctx.Done()
 
+	srv.ShutdownStreams()
+
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	if err := httpServer.Shutdown(shutdownCtx); err != nil {
 		slog.Error("graceful shutdown failed", "error", err)
+		if closeErr := httpServer.Close(); closeErr != nil && closeErr != http.ErrServerClosed {
+			slog.Error("force close failed", "error", closeErr)
+		}
 	}
 }
 

@@ -12,12 +12,18 @@ import (
 	"net/http"
 	"path"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/thiagokokada/gtorrent/internal/domain"
 )
 
 const maxTorrentUploadBytes = 16 << 20 // 16 MiB
+
+var (
+	streamPollInterval      = 4 * time.Second
+	streamKeepaliveInterval = 20 * time.Second
+)
 
 //go:embed static/*
 var staticFS embed.FS
@@ -36,6 +42,8 @@ type Service interface {
 type Server struct {
 	svc        Service
 	staticRoot http.Handler
+	streamStop chan struct{}
+	streamOnce sync.Once
 }
 
 func New(svc Service) (*Server, error) {
@@ -43,12 +51,23 @@ func New(svc Service) (*Server, error) {
 	if err != nil {
 		return nil, fmt.Errorf("load static fs: %w", err)
 	}
-	return &Server{svc: svc, staticRoot: http.FileServer(http.FS(sub))}, nil
+	return &Server{
+		svc:        svc,
+		staticRoot: http.FileServer(http.FS(sub)),
+		streamStop: make(chan struct{}),
+	}, nil
+}
+
+func (s *Server) ShutdownStreams() {
+	s.streamOnce.Do(func() {
+		close(s.streamStop)
+	})
 }
 
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/torrents", s.handleTorrents)
+	mux.HandleFunc("/api/torrents/stream", s.handleTorrentStream)
 	mux.HandleFunc("/api/torrents/", s.handleTorrentByHash)
 	mux.HandleFunc("/healthz", s.handleHealthz)
 	mux.HandleFunc("/", s.handleStatic)
@@ -135,6 +154,78 @@ func (s *Server) handleListTorrents(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"torrents": items})
+}
+
+func (s *Server) handleTorrentStream(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeMethodNotAllowed(w, http.MethodGet)
+		return
+	}
+
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		writeError(w, http.StatusInternalServerError, "streaming unsupported")
+		return
+	}
+
+	ctx := r.Context()
+	streamCtx, streamCancel := context.WithCancel(ctx)
+	defer streamCancel()
+	go func() {
+		select {
+		case <-s.streamStop:
+			streamCancel()
+		case <-ctx.Done():
+		}
+	}()
+
+	items, err := s.svc.List(streamCtx)
+	if err != nil {
+		writeError(w, http.StatusBadGateway, err.Error())
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+	w.Header().Set("X-Accel-Buffering", "no")
+
+	if _, err := io.WriteString(w, "retry: 3000\n\n"); err != nil {
+		return
+	}
+	if err := writeSSEEvent(w, flusher, "torrents", map[string]any{"torrents": items}); err != nil {
+		return
+	}
+
+	pollTicker := time.NewTicker(streamPollInterval)
+	defer pollTicker.Stop()
+
+	keepaliveTicker := time.NewTicker(streamKeepaliveInterval)
+	defer keepaliveTicker.Stop()
+
+	for {
+		select {
+		case <-streamCtx.Done():
+			return
+		case <-pollTicker.C:
+			items, err := s.svc.List(streamCtx)
+			if err != nil {
+				if writeErr := writeSSEEvent(w, flusher, "backend-error", map[string]any{"error": err.Error()}); writeErr != nil {
+					return
+				}
+				continue
+			}
+
+			if err := writeSSEEvent(w, flusher, "torrents", map[string]any{"torrents": items}); err != nil {
+				return
+			}
+		case <-keepaliveTicker.C:
+			if _, err := io.WriteString(w, ": ping\n\n"); err != nil {
+				return
+			}
+			flusher.Flush()
+		}
+	}
 }
 
 func (s *Server) handleAddTorrent(w http.ResponseWriter, r *http.Request) {
@@ -268,6 +359,23 @@ func writeJSON(w http.ResponseWriter, status int, payload map[string]any) {
 	_ = json.NewEncoder(w).Encode(payload)
 }
 
+func writeSSEEvent(w io.Writer, flusher http.Flusher, event string, payload map[string]any) error {
+	data, err := json.Marshal(payload)
+	if err != nil {
+		return err
+	}
+	if event != "" {
+		if _, err := fmt.Fprintf(w, "event: %s\n", event); err != nil {
+			return err
+		}
+	}
+	if _, err := fmt.Fprintf(w, "data: %s\n\n", data); err != nil {
+		return err
+	}
+	flusher.Flush()
+	return nil
+}
+
 type statusRecorder struct {
 	http.ResponseWriter
 	status int
@@ -283,6 +391,12 @@ func (r *statusRecorder) Write(p []byte) (int, error) {
 	n, err := r.ResponseWriter.Write(p)
 	r.size += n
 	return n, err
+}
+
+func (r *statusRecorder) Flush() {
+	if flusher, ok := r.ResponseWriter.(http.Flusher); ok {
+		flusher.Flush()
+	}
 }
 
 func loggingMiddleware(next http.Handler) http.Handler {

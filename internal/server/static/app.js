@@ -70,6 +70,8 @@ let resizeState = null;
 let messageHideTimer = null;
 let messageVisibleToken = "";
 let dismissedMessageToken = "";
+let torrentStream = null;
+let fallbackPollingTimer = null;
 
 const state = {
   torrents: [],
@@ -255,6 +257,14 @@ const parseJSON = async (response) => {
   }
 };
 
+const parseEventPayload = (raw) => {
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return {};
+  }
+};
+
 function clampColumnWidth(key, width) {
   const min = COLUMN_MIN_WIDTHS[key] || 56;
   const next = Number(width);
@@ -435,12 +445,7 @@ async function fetchTorrents() {
       throw new Error(payload.error || "Failed to load torrents");
     }
 
-    state.torrents = Array.isArray(payload.torrents) ? payload.torrents : [];
-
-    if (state.selectedHash && !state.torrents.find((item) => item.hash === state.selectedHash)) {
-      state.selectedHash = "";
-    }
-
+    applyTorrentsPayload(payload);
     setConnectionState("online");
     render();
   } catch (error) {
@@ -448,6 +453,59 @@ async function fetchTorrents() {
   } finally {
     state.loading = false;
   }
+}
+
+function applyTorrentsPayload(payload) {
+  state.torrents = Array.isArray(payload.torrents) ? payload.torrents : [];
+
+  if (state.selectedHash && !state.torrents.find((item) => item.hash === state.selectedHash)) {
+    state.selectedHash = "";
+  }
+}
+
+function startFallbackPolling() {
+  if (fallbackPollingTimer !== null) return;
+  fallbackPollingTimer = window.setInterval(fetchTorrents, REFRESH_INTERVAL_MS);
+}
+
+function startTorrentStream() {
+  if (!("EventSource" in window)) {
+    startFallbackPolling();
+    return;
+  }
+
+  if (torrentStream) {
+    torrentStream.close();
+  }
+
+  try {
+    torrentStream = new EventSource("/api/torrents/stream");
+  } catch {
+    startFallbackPolling();
+    setConnectionState("offline", "Connection error: stream unavailable");
+    return;
+  }
+
+  torrentStream.onopen = () => {
+    setConnectionState("online");
+  };
+
+  torrentStream.addEventListener("torrents", (event) => {
+    const payload = parseEventPayload(event.data);
+    applyTorrentsPayload(payload);
+    setConnectionState("online");
+    render();
+  });
+
+  torrentStream.addEventListener("backend-error", (event) => {
+    const payload = parseEventPayload(event.data);
+    const errorText = payload.error || "Failed to load torrents";
+    setConnectionState("offline", `Connection error: ${errorText}`);
+  });
+
+  torrentStream.onerror = () => {
+    setConnectionState("offline", "Connection error: stream disconnected, retrying...");
+  };
 }
 
 function render() {
@@ -721,4 +779,4 @@ removeSelectedBtn.addEventListener("click", () => removeSelectedTorrent());
 initializeResizableColumns();
 renderStatusMessage();
 fetchTorrents();
-setInterval(fetchTorrents, REFRESH_INTERVAL_MS);
+startTorrentStream();
