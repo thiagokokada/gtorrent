@@ -54,13 +54,15 @@ GTORRENT_LISTEN=:8080 \
 ./gtorrent
 ```
 
-Open `http://localhost:8080`.
+The app opens `http://localhost:8080` in your default browser on startup unless disabled.
 
 ## Configuration
 
 Flags and env vars are both supported:
 
 - `--listen` / `GTORRENT_LISTEN` (default `:8080`)
+- `--open-browser` / `GTORRENT_OPEN_BROWSER` (default `true`)
+- `--no-open-browser` (always disables browser auto-open)
 - `--rtorrent-mode` / `GTORRENT_MODE` (`unix` or `http`)
 - `--rtorrent-socket` / `GTORRENT_UNIX_SOCKET`
 - `--rtorrent-http-url` / `GTORRENT_HTTP_URL`
