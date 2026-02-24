@@ -8,9 +8,11 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"log/slog"
 	"net/http"
 	"path"
 	"strings"
+	"time"
 
 	"gtorrent/internal/domain"
 )
@@ -50,7 +52,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/api/torrents/", s.handleTorrentByHash)
 	mux.HandleFunc("/healthz", s.handleHealthz)
 	mux.HandleFunc("/", s.handleStatic)
-	return mux
+	return loggingMiddleware(mux)
 }
 
 func (s *Server) handleHealthz(w http.ResponseWriter, _ *http.Request) {
@@ -264,4 +266,39 @@ func writeJSON(w http.ResponseWriter, status int, payload map[string]any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(payload)
+}
+
+type statusRecorder struct {
+	http.ResponseWriter
+	status int
+	size   int
+}
+
+func (r *statusRecorder) WriteHeader(status int) {
+	r.status = status
+	r.ResponseWriter.WriteHeader(status)
+}
+
+func (r *statusRecorder) Write(p []byte) (int, error) {
+	n, err := r.ResponseWriter.Write(p)
+	r.size += n
+	return n, err
+}
+
+func loggingMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		start := time.Now()
+		rec := &statusRecorder{ResponseWriter: w, status: http.StatusOK}
+		next.ServeHTTP(rec, r)
+		duration := time.Since(start).Round(time.Millisecond)
+
+		switch {
+		case rec.status >= http.StatusInternalServerError:
+			slog.Error("http request", "method", r.Method, "path", r.URL.RequestURI(), "remote", r.RemoteAddr, "status", rec.status, "bytes", rec.size, "duration", duration)
+		case rec.status >= http.StatusBadRequest:
+			slog.Warn("http request", "method", r.Method, "path", r.URL.RequestURI(), "remote", r.RemoteAddr, "status", rec.status, "bytes", rec.size, "duration", duration)
+		default:
+			slog.Debug("http request", "method", r.Method, "path", r.URL.RequestURI(), "remote", r.RemoteAddr, "status", rec.status, "bytes", rec.size, "duration", duration)
+		}
+	})
 }

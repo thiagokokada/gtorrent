@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"math"
 	"strconv"
 	"strings"
@@ -34,6 +35,7 @@ func NewClient(rpc xmlrpc.Caller) *Client {
 }
 
 func (c *Client) List(ctx context.Context) ([]domain.Torrent, error) {
+	start := time.Now()
 	result, err := c.rpc.Call(ctx, "d.multicall2",
 		"",
 		"main",
@@ -52,12 +54,15 @@ func (c *Client) List(ctx context.Context) ([]domain.Torrent, error) {
 		"d.peers_complete=",
 	)
 	if err != nil {
+		slog.Error("rtorrent list update failed", "duration", time.Since(start).Round(time.Millisecond), "error", err)
 		return nil, err
 	}
 
 	outer, ok := result.([]any)
 	if !ok {
-		return nil, fmt.Errorf("unexpected multicall result type %T", result)
+		err := fmt.Errorf("unexpected multicall result type %T", result)
+		slog.Error("rtorrent list update failed", "duration", time.Since(start).Round(time.Millisecond), "error", err)
+		return nil, err
 	}
 
 	out := make([]domain.Torrent, 0, len(outer))
@@ -115,115 +120,152 @@ func (c *Client) List(ctx context.Context) ([]domain.Torrent, error) {
 			Seeds:      asInt64(getCol(cols, 12)),
 		})
 	}
+	slog.Debug("rtorrent list update", "torrents", len(out), "duration", time.Since(start).Round(time.Millisecond))
 	return out, nil
 }
 
 func (c *Client) AddMagnet(ctx context.Context, magnet string) error {
 	magnet = strings.TrimSpace(magnet)
 	if magnet == "" {
+		slog.Warn("add magnet rejected", "reason", "empty magnet")
 		return errors.New("magnet is required")
 	}
 	if !strings.HasPrefix(magnet, "magnet:") {
+		slog.Warn("add magnet rejected", "reason", "invalid magnet uri")
 		return errors.New("invalid magnet URI")
 	}
 
+	slog.Info("adding magnet")
 	methods := []string{"load.start", "load.normal"}
 	var lastErr error
 	for _, method := range methods {
 		_, err := c.rpc.Call(ctx, method, "", magnet)
 		if err == nil {
+			slog.Info("magnet added", "method", method)
 			return nil
 		}
+		slog.Debug("add magnet method failed", "method", method, "error", err)
 		lastErr = err
 	}
-	return fmt.Errorf("add magnet failed: %w", lastErr)
+	err := fmt.Errorf("add magnet failed: %w", lastErr)
+	slog.Error("add magnet failed", "error", err)
+	return err
 }
 
 func (c *Client) AddTorrent(ctx context.Context, data []byte, _ string) error {
 	if len(data) == 0 {
+		slog.Warn("add torrent rejected", "reason", "empty payload")
 		return errors.New("torrent payload is empty")
 	}
 
+	slog.Info("adding torrent file", "bytes", len(data))
 	methods := []string{"load.raw_start", "load.raw", "load.start"}
 	var lastErr error
 	for _, method := range methods {
 		_, err := c.rpc.Call(ctx, method, "", data)
 		if err == nil {
+			slog.Info("torrent file added", "method", method)
 			return nil
 		}
+		slog.Debug("add torrent method failed", "method", method, "error", err)
 		lastErr = err
 	}
-	return fmt.Errorf("add torrent failed: %w", lastErr)
+	err := fmt.Errorf("add torrent failed: %w", lastErr)
+	slog.Error("add torrent failed", "error", err)
+	return err
 }
 
 func (c *Client) Remove(ctx context.Context, hash string, deleteData bool) error {
 	hash = strings.TrimSpace(hash)
 	if hash == "" {
+		slog.Warn("remove torrent rejected", "reason", "empty hash")
 		return errors.New("hash is required")
 	}
 
+	slog.Info("removing torrent", "hash", hash, "delete_data", deleteData)
 	if deleteData {
 		_, _ = c.rpc.Call(ctx, "d.stop", hash)
 		_, _ = c.rpc.Call(ctx, "d.close", hash)
 	}
 	_, err := c.rpc.Call(ctx, "d.erase", hash)
 	if err != nil {
-		return fmt.Errorf("remove torrent: %w", err)
+		wrapped := fmt.Errorf("remove torrent: %w", err)
+		slog.Error("remove torrent failed", "hash", hash, "error", wrapped)
+		return wrapped
 	}
+	slog.Info("torrent removed", "hash", hash)
 	return nil
 }
 
 func (c *Client) Start(ctx context.Context, hash string) error {
 	hash = strings.TrimSpace(hash)
 	if hash == "" {
+		slog.Warn("start torrent rejected", "reason", "empty hash")
 		return errors.New("hash is required")
 	}
 
+	slog.Info("starting torrent", "hash", hash)
 	_, _ = c.rpc.Call(ctx, "d.open", hash)
 	_, startErr := c.rpc.Call(ctx, "d.start", hash)
 	if startErr == nil {
+		slog.Info("torrent started", "hash", hash, "method", "d.start")
 		return nil
 	}
 	if _, resumeErr := c.rpc.Call(ctx, "d.resume", hash); resumeErr == nil {
+		slog.Info("torrent started", "hash", hash, "method", "d.resume")
 		return nil
 	}
-	return fmt.Errorf("start torrent %s failed: %w", hash, startErr)
+	err := fmt.Errorf("start torrent %s failed: %w", hash, startErr)
+	slog.Error("start torrent failed", "hash", hash, "error", err)
+	return err
 }
 
 func (c *Client) Stop(ctx context.Context, hash string) error {
 	hash = strings.TrimSpace(hash)
 	if hash == "" {
+		slog.Warn("stop torrent rejected", "reason", "empty hash")
 		return errors.New("hash is required")
 	}
 
+	slog.Info("stopping torrent", "hash", hash)
 	_, stopErr := c.rpc.Call(ctx, "d.stop", hash)
 	if stopErr == nil {
+		slog.Info("torrent stopped", "hash", hash, "method", "d.stop")
 		return nil
 	}
 	if _, err := c.rpc.Call(ctx, "d.pause", hash); err == nil {
+		slog.Info("torrent stopped", "hash", hash, "method", "d.pause")
 		return nil
 	}
-	return fmt.Errorf("stop torrent %s failed: %w", hash, stopErr)
+	err := fmt.Errorf("stop torrent %s failed: %w", hash, stopErr)
+	slog.Error("stop torrent failed", "hash", hash, "error", err)
+	return err
 }
 
 func (c *Client) Recheck(ctx context.Context, hash string) error {
 	hash = strings.TrimSpace(hash)
 	if hash == "" {
+		slog.Warn("recheck torrent rejected", "reason", "empty hash")
 		return errors.New("hash is required")
 	}
 
+	slog.Info("rechecking torrent", "hash", hash)
 	var firstErr error
 	for _, method := range []string{"d.check_hash", "d.check_hash="} {
 		_, err := c.rpc.Call(ctx, method, hash)
 		if err == nil {
+			slog.Info("torrent recheck started", "hash", hash, "method", method)
 			return nil
 		}
+		slog.Debug("recheck method failed", "hash", hash, "method", method, "error", err)
 		if firstErr == nil {
 			firstErr = err
 		}
 	}
 
-	return fmt.Errorf("recheck torrent %s failed: %w", hash, firstErr)
+	err := fmt.Errorf("recheck torrent %s failed: %w", hash, firstErr)
+	slog.Error("recheck torrent failed", "hash", hash, "error", err)
+	return err
 }
 
 func asString(v any) string {

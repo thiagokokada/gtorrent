@@ -63,6 +63,7 @@ Flags and env vars are both supported:
 - `--listen` / `GTORRENT_LISTEN` (default `:8080`)
 - `--open-browser` / `GTORRENT_OPEN_BROWSER` (default `true`)
 - `--no-open-browser` (always disables browser auto-open)
+- `--verbose` / `GTORRENT_VERBOSE` (default `false`, enables debug logs)
 - `--rtorrent-mode` / `GTORRENT_MODE` (`unix` or `http`)
 - `--rtorrent-socket` / `GTORRENT_UNIX_SOCKET`
 - `--rtorrent-http-url` / `GTORRENT_HTTP_URL`

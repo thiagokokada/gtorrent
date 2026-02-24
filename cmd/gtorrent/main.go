@@ -3,7 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
-	"log"
+	"log/slog"
 	"net"
 	"net/http"
 	"os"
@@ -25,19 +25,23 @@ import (
 func main() {
 	cfg, err := config.Load()
 	if err != nil {
-		log.Fatalf("invalid config: %v", err)
+		slog.Error("invalid config", "error", err)
+		os.Exit(1)
 	}
+	configureLogger(cfg.Verbose)
 
 	transport, err := buildTransport(cfg)
 	if err != nil {
-		log.Fatalf("transport setup failed: %v", err)
+		slog.Error("transport setup failed", "error", err)
+		os.Exit(1)
 	}
 
 	rpc := xmlrpc.NewClient(transport)
 	svc := rtorrent.NewClient(rpc)
 	srv, err := server.New(svc)
 	if err != nil {
-		log.Fatalf("server setup failed: %v", err)
+		slog.Error("server setup failed", "error", err)
+		os.Exit(1)
 	}
 
 	httpServer := &http.Server{
@@ -50,16 +54,19 @@ func main() {
 	}
 
 	go func() {
-		log.Printf("gTorrent listening on %s", cfg.ListenAddr)
+		slog.Info("gtorrent listening", "address", cfg.ListenAddr)
 		if err := httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			log.Fatalf("server error: %v", err)
+			slog.Error("server error", "error", err)
+			os.Exit(1)
 		}
 	}()
 
 	if cfg.OpenBrowser {
 		url := browserURL(cfg.ListenAddr)
 		if err := openBrowser(url); err != nil {
-			log.Printf("failed to open browser: %v", err)
+			slog.Warn("failed to open browser", "url", url, "error", err)
+		} else {
+			slog.Info("opened browser", "url", url)
 		}
 	}
 
@@ -70,8 +77,19 @@ func main() {
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	if err := httpServer.Shutdown(shutdownCtx); err != nil {
-		log.Printf("graceful shutdown failed: %v", err)
+		slog.Error("graceful shutdown failed", "error", err)
 	}
+}
+
+func configureLogger(verbose bool) {
+	level := slog.LevelInfo
+	if verbose {
+		level = slog.LevelDebug
+	}
+	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{
+		Level: level,
+	}))
+	slog.SetDefault(logger)
 }
 
 func buildTransport(cfg config.Config) (transport.Caller, error) {
