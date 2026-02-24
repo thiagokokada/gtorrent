@@ -3,7 +3,8 @@
 
   let connectionState = "connecting";
   let connectionError = "";
-  let backendError = "";
+  let backendStatusKind = "";
+  let backendStatusMessage = "";
   let currentMessageToken = "";
   let dismissedMessageToken = "";
   let transientMessage = null;
@@ -102,21 +103,16 @@
     }, durationMs);
   }
 
-  function setBackendError(text) {
-    const next = (text || "").trim();
-    if (backendError === next) {
-      return;
-    }
-    backendError = next;
-    dismissedMessageToken = "";
-    renderStatusMessage();
-  }
+  function setBackendStatus(kind, message) {
+    const nextKind = kind === "ok" || kind === "error" ? kind : "";
+    const nextMessage = (message || "").trim();
 
-  function clearBackendError() {
-    if (backendError === "") {
+    if (backendStatusKind === nextKind && backendStatusMessage === nextMessage) {
       return;
     }
-    backendError = "";
+    backendStatusKind = nextKind;
+    backendStatusMessage = nextMessage;
+    dismissedMessageToken = "";
     renderStatusMessage();
   }
 
@@ -125,12 +121,28 @@
     if (!stats) {
       return;
     }
-    const nextError = (stats.dataset.backendError || "").trim();
-    if (nextError !== "") {
-      setBackendError(nextError);
-      return;
+    const kind = (stats.dataset.backendStatusKind || "").trim();
+    const message = (stats.dataset.backendStatusMessage || "").trim();
+    setBackendStatus(kind, message);
+  }
+
+  function backendStatusFromStatsHTML(html) {
+    const raw = (html || "").trim();
+    if (raw === "") {
+      return { kind: "", message: "" };
     }
-    clearBackendError();
+
+    const tpl = document.createElement("template");
+    tpl.innerHTML = raw;
+    const stats = tpl.content.querySelector("#global-stats");
+    if (!stats) {
+      return { kind: "", message: "" };
+    }
+
+    return {
+      kind: (stats.dataset.backendStatusKind || "").trim(),
+      message: (stats.dataset.backendStatusMessage || "").trim(),
+    };
   }
 
   function setConnectionState(state, err) {
@@ -154,12 +166,11 @@
       };
     }
 
-    if (backendError !== "") {
-      const text = "rTorrent error: " + backendError;
+    if (backendStatusKind === "error" && backendStatusMessage !== "") {
       return {
-        text,
+        text: backendStatusMessage,
         kind: "error",
-        token: "backend:error:" + backendError,
+        token: "backend:error:" + backendStatusMessage,
         autoHideMs: 0,
       };
     }
@@ -170,6 +181,15 @@
         kind: transientMessage.kind,
         token: "transient:" + transientMessage.kind + ":" + transientMessage.text,
         autoHideMs: transientMessage.kind === "error" ? 0 : 4500,
+      };
+    }
+
+    if (backendStatusKind === "ok" && backendStatusMessage !== "") {
+      return {
+        text: backendStatusMessage,
+        kind: "ok",
+        token: "backend:ok:" + backendStatusMessage,
+        autoHideMs: 4000,
       };
     }
 
@@ -613,6 +633,16 @@
     if (target.id === "dashboard" || target.id === "torrents-body") {
       syncDashboard();
     }
+  });
+
+  document.body.addEventListener("htmx:sseMessage", function (event) {
+    const detail = event.detail;
+    if (!detail || detail.type !== "stats") {
+      return;
+    }
+
+    const status = backendStatusFromStatsHTML(detail.data);
+    setBackendStatus(status.kind, status.message);
   });
 
   document.addEventListener("DOMContentLoaded", function () {

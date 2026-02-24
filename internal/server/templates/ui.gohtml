@@ -126,7 +126,7 @@
 {{end}}
 
 {{define "stats"}}
-<div id="global-stats" class="global-stats" sse-swap="stats" hx-swap="outerHTML" data-backend-error="{{.BackendError}}">{{.VisibleCount}} torrents | ↓ {{.TotalDownRate}} | ↑ {{.TotalUpRate}}</div>
+<div id="global-stats" class="global-stats" sse-swap="stats" hx-swap="outerHTML" data-backend-status-kind="{{.BackendStatusKind}}" data-backend-status-message="{{.BackendStatusMessage}}">{{.VisibleCount}} torrents | ↓ {{.TotalDownRate}} | ↑ {{.TotalUpRate}}</div>
 {{end}}
 
 {{define "table"}}

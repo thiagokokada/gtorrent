@@ -40,6 +40,7 @@ func main() {
 
 	rpc := xmlrpc.NewClient(transport)
 	svc := rtorrent.NewClient(rpc)
+	svc.SetConnectionTarget(rtorrentTarget(cfg))
 	srv, err := server.New(svc)
 	if err != nil {
 		slog.Error("server setup failed", "error", err)
@@ -113,6 +114,17 @@ func buildTransport(cfg config.Config) (transport.Caller, error) {
 		return &httptransport.Client{URL: cfg.HTTPURL, User: cfg.HTTPUser, Pass: cfg.HTTPPass}, nil
 	default:
 		return nil, fmt.Errorf("invalid mode %q", cfg.Mode)
+	}
+}
+
+func rtorrentTarget(cfg config.Config) string {
+	switch cfg.Mode {
+	case config.ModeUnix:
+		return cfg.UnixSocket
+	case config.ModeHTTP:
+		return cfg.HTTPURL
+	default:
+		return ""
 	}
 }
 

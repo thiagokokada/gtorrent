@@ -88,14 +88,15 @@ type torrentRow struct {
 }
 
 type dashboardView struct {
-	Params        viewParams
-	Flash         flashMessage
-	Torrents      []torrentRow
-	VisibleCount  int
-	TotalDownRate string
-	TotalUpRate   string
-	StreamURL     string
-	BackendError  string
+	Params               viewParams
+	Flash                flashMessage
+	Torrents             []torrentRow
+	VisibleCount         int
+	TotalDownRate        string
+	TotalUpRate          string
+	StreamURL            string
+	BackendStatusKind    string
+	BackendStatusMessage string
 }
 
 func New(svc Service) (*Server, error) {
@@ -326,13 +327,15 @@ func (s *Server) handleUIStream(w http.ResponseWriter, r *http.Request) {
 func (s *Server) writeLiveUpdate(w io.Writer, flusher http.Flusher, ctx context.Context, params viewParams) error {
 	view, err := s.buildDashboardView(ctx, params)
 	if err != nil {
+		status := s.currentBackendStatus(err)
 		fallback := dashboardView{
-			Params:        params,
-			VisibleCount:  0,
-			TotalDownRate: "0 B/s",
-			TotalUpRate:   "0 B/s",
-			StreamURL:     streamURLForParams(params),
-			BackendError:  err.Error(),
+			Params:               params,
+			VisibleCount:         0,
+			TotalDownRate:        "0 B/s",
+			TotalUpRate:          "0 B/s",
+			StreamURL:            streamURLForParams(params),
+			BackendStatusKind:    status.Kind,
+			BackendStatusMessage: status.Message,
 		}
 		statsHTML, renderErr := s.renderTemplateToString("stats", fallback)
 		if renderErr != nil {
@@ -389,13 +392,15 @@ func (s *Server) handleStatic(w http.ResponseWriter, r *http.Request) {
 func (s *Server) renderDashboard(w http.ResponseWriter, ctx context.Context, params viewParams, flash flashMessage) {
 	view, err := s.buildDashboardView(ctx, params)
 	if err != nil {
+		status := s.currentBackendStatus(err)
 		view = dashboardView{
-			Params:        params,
-			VisibleCount:  0,
-			TotalDownRate: "0 B/s",
-			TotalUpRate:   "0 B/s",
-			StreamURL:     streamURLForParams(params),
-			BackendError:  err.Error(),
+			Params:               params,
+			VisibleCount:         0,
+			TotalDownRate:        "0 B/s",
+			TotalUpRate:          "0 B/s",
+			StreamURL:            streamURLForParams(params),
+			BackendStatusKind:    status.Kind,
+			BackendStatusMessage: status.Message,
 		}
 		if flash.Message == "" {
 			flash = flashMessage{Kind: "error", Message: err.Error()}
@@ -447,15 +452,44 @@ func (s *Server) buildDashboardView(ctx context.Context, params viewParams) (das
 		upTotal += item.UpRate
 	}
 
+	status := s.currentBackendStatus(nil)
 	return dashboardView{
-		Params:        params,
-		Torrents:      rows,
-		VisibleCount:  len(rows),
-		TotalDownRate: formatRate(downTotal),
-		TotalUpRate:   formatRate(upTotal),
-		StreamURL:     streamURLForParams(params),
-		BackendError:  "",
+		Params:               params,
+		Torrents:             rows,
+		VisibleCount:         len(rows),
+		TotalDownRate:        formatRate(downTotal),
+		TotalUpRate:          formatRate(upTotal),
+		StreamURL:            streamURLForParams(params),
+		BackendStatusKind:    status.Kind,
+		BackendStatusMessage: status.Message,
 	}, nil
+}
+
+func (s *Server) currentBackendStatus(fallbackErr error) domain.BackendStatus {
+	type backendStatusProvider interface {
+		BackendStatus() domain.BackendStatus
+	}
+
+	if provider, ok := s.svc.(backendStatusProvider); ok {
+		status := provider.BackendStatus()
+		switch status.Kind {
+		case "ok", "error":
+		default:
+			status.Kind = ""
+		}
+		status.Message = strings.TrimSpace(status.Message)
+		if status.Kind != "" && status.Message != "" {
+			return status
+		}
+	}
+
+	if fallbackErr != nil {
+		return domain.BackendStatus{
+			Kind:    "error",
+			Message: fallbackErr.Error(),
+		}
+	}
+	return domain.BackendStatus{}
 }
 
 func filterTorrents(items []domain.Torrent, params viewParams) []domain.Torrent {

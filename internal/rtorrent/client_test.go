@@ -3,6 +3,7 @@ package rtorrent
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 )
@@ -145,5 +146,48 @@ func TestRecheckCallsCheckHash(t *testing.T) {
 	}
 	if len(rpc.calls) < 1 || rpc.calls[0] != "d.check_hash" {
 		t.Fatalf("unexpected calls: %v", rpc.calls)
+	}
+}
+
+func TestBackendStatusTransitionsFromErrorToConnected(t *testing.T) {
+	callCount := 0
+	rpc := &mockRPC{
+		fn: func(method string, _ ...any) (any, error) {
+			if method != "d.multicall2" {
+				return nil, nil
+			}
+			callCount++
+			if callCount == 1 {
+				return nil, errors.New("dial unix /run/rtorrent/rpc.sock: no such file")
+			}
+			return []any{
+				[]any{"h1", "Ubuntu ISO", int64(100), int64(100), int64(0), int64(0), int64(1), int64(1), int64(1700000000), int64(0), int64(1000), int64(0), int64(0)},
+			}, nil
+		},
+	}
+
+	client := NewClient(rpc)
+	client.SetConnectionTarget("/run/rtorrent/rpc.sock")
+
+	if _, err := client.List(context.Background()); err == nil {
+		t.Fatalf("expected first List() call to fail")
+	}
+	status := client.BackendStatus()
+	if status.Kind != "error" {
+		t.Fatalf("expected backend status error, got %+v", status)
+	}
+	if !strings.Contains(status.Message, "/run/rtorrent/rpc.sock") {
+		t.Fatalf("expected backend status target in message, got %q", status.Message)
+	}
+
+	if _, err := client.List(context.Background()); err != nil {
+		t.Fatalf("expected second List() call to succeed, err=%v", err)
+	}
+	status = client.BackendStatus()
+	if status.Kind != "ok" {
+		t.Fatalf("expected backend status ok, got %+v", status)
+	}
+	if !strings.Contains(status.Message, "Connected successfully to rTorrent: /run/rtorrent/rpc.sock") {
+		t.Fatalf("unexpected backend success message: %q", status.Message)
 	}
 }

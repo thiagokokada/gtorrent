@@ -8,6 +8,7 @@ import (
 	"math"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/thiagokokada/gtorrent/internal/domain"
@@ -27,11 +28,26 @@ type Service interface {
 
 // Client is an rTorrent service backed by XML-RPC methods.
 type Client struct {
-	rpc xmlrpc.Caller
+	rpc      xmlrpc.Caller
+	statusMu sync.RWMutex
+	target   string
+	status   domain.BackendStatus
 }
 
 func NewClient(rpc xmlrpc.Caller) *Client {
 	return &Client{rpc: rpc}
+}
+
+func (c *Client) SetConnectionTarget(target string) {
+	c.statusMu.Lock()
+	c.target = strings.TrimSpace(target)
+	c.statusMu.Unlock()
+}
+
+func (c *Client) BackendStatus() domain.BackendStatus {
+	c.statusMu.RLock()
+	defer c.statusMu.RUnlock()
+	return c.status
 }
 
 func (c *Client) List(ctx context.Context) ([]domain.Torrent, error) {
@@ -54,6 +70,7 @@ func (c *Client) List(ctx context.Context) ([]domain.Torrent, error) {
 		"d.peers_complete=",
 	)
 	if err != nil {
+		c.setBackendStatus("error", fmt.Sprintf("Error talking to rTorrent (%s): %v", c.connectionTarget(), err))
 		slog.Error("rtorrent list update failed", "duration", time.Since(start).Round(time.Millisecond), "error", err)
 		return nil, err
 	}
@@ -61,6 +78,7 @@ func (c *Client) List(ctx context.Context) ([]domain.Torrent, error) {
 	outer, ok := result.([]any)
 	if !ok {
 		err := fmt.Errorf("unexpected multicall result type %T", result)
+		c.setBackendStatus("error", fmt.Sprintf("Error talking to rTorrent (%s): %v", c.connectionTarget(), err))
 		slog.Error("rtorrent list update failed", "duration", time.Since(start).Round(time.Millisecond), "error", err)
 		return nil, err
 	}
@@ -120,8 +138,28 @@ func (c *Client) List(ctx context.Context) ([]domain.Torrent, error) {
 			Seeds:      asInt64(getCol(cols, 12)),
 		})
 	}
+	c.setBackendStatus("ok", fmt.Sprintf("Connected successfully to rTorrent: %s", c.connectionTarget()))
 	slog.Debug("rtorrent list update", "torrents", len(out), "duration", time.Since(start).Round(time.Millisecond))
 	return out, nil
+}
+
+func (c *Client) setBackendStatus(kind, message string) {
+	c.statusMu.Lock()
+	c.status = domain.BackendStatus{
+		Kind:    kind,
+		Message: strings.TrimSpace(message),
+	}
+	c.statusMu.Unlock()
+}
+
+func (c *Client) connectionTarget() string {
+	c.statusMu.RLock()
+	target := c.target
+	c.statusMu.RUnlock()
+	if target != "" {
+		return target
+	}
+	return "unknown endpoint"
 }
 
 func (c *Client) AddMagnet(ctx context.Context, magnet string) error {

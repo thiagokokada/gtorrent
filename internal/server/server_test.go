@@ -13,13 +13,14 @@ import (
 )
 
 type mockService struct {
-	listFn      func(context.Context) ([]domain.Torrent, error)
-	addMagnetFn func(context.Context, string) error
-	addFileFn   func(context.Context, []byte, string) error
-	removeFn    func(context.Context, string, bool) error
-	startFn     func(context.Context, string) error
-	stopFn      func(context.Context, string) error
-	recheckFn   func(context.Context, string) error
+	listFn          func(context.Context) ([]domain.Torrent, error)
+	addMagnetFn     func(context.Context, string) error
+	addFileFn       func(context.Context, []byte, string) error
+	removeFn        func(context.Context, string, bool) error
+	startFn         func(context.Context, string) error
+	stopFn          func(context.Context, string) error
+	recheckFn       func(context.Context, string) error
+	backendStatusFn func() domain.BackendStatus
 }
 
 func (m *mockService) List(ctx context.Context) ([]domain.Torrent, error) {
@@ -69,6 +70,13 @@ func (m *mockService) Recheck(ctx context.Context, hash string) error {
 		return nil
 	}
 	return m.recheckFn(ctx, hash)
+}
+
+func (m *mockService) BackendStatus() domain.BackendStatus {
+	if m.backendStatusFn == nil {
+		return domain.BackendStatus{}
+	}
+	return m.backendStatusFn()
 }
 
 func TestDashboardEndpointRendersTorrentRows(t *testing.T) {
@@ -226,5 +234,37 @@ func TestAPIRoutesRemoved(t *testing.T) {
 
 	if rr.Code != http.StatusNotFound {
 		t.Fatalf("status = %d, body=%s", rr.Code, rr.Body.String())
+	}
+}
+
+func TestDashboardRendersBackendStatus(t *testing.T) {
+	s, err := New(&mockService{
+		listFn: func(context.Context) ([]domain.Torrent, error) {
+			return nil, nil
+		},
+		backendStatusFn: func() domain.BackendStatus {
+			return domain.BackendStatus{
+				Kind:    "ok",
+				Message: "Connected successfully to rTorrent: /run/rtorrent/rpc.sock",
+			}
+		},
+	})
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/ui/dashboard", nil)
+	rr := httptest.NewRecorder()
+	s.Handler().ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d, body=%s", rr.Code, rr.Body.String())
+	}
+	body := rr.Body.String()
+	if !strings.Contains(body, "data-backend-status-kind=\"ok\"") {
+		t.Fatalf("expected backend status kind in stats, body=%s", body)
+	}
+	if !strings.Contains(body, "Connected successfully to rTorrent: /run/rtorrent/rpc.sock") {
+		t.Fatalf("expected backend status message in stats, body=%s", body)
 	}
 }
