@@ -131,6 +131,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/ui/torrents", s.handleUIAddTorrent)
 	mux.HandleFunc("/ui/torrents/", s.handleUITorrentAction)
 	mux.HandleFunc("/ui/stream", s.handleUIStream)
+	mux.HandleFunc("/ui/backend-status/stream", s.handleUIBackendStatusStream)
 	mux.HandleFunc("/healthz", s.handleHealthz)
 	mux.HandleFunc("/", s.handleStatic)
 	return loggingMiddleware(mux)
@@ -324,6 +325,83 @@ func (s *Server) handleUIStream(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func (s *Server) handleUIBackendStatusStream(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeMethodNotAllowed(w, http.MethodGet)
+		return
+	}
+
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		writeError(w, http.StatusInternalServerError, "streaming unsupported")
+		return
+	}
+
+	ctx := r.Context()
+	streamCtx, streamCancel := context.WithCancel(ctx)
+	defer streamCancel()
+	go func() {
+		select {
+		case <-s.streamStop:
+			streamCancel()
+		case <-ctx.Done():
+		}
+	}()
+
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+	w.Header().Set("X-Accel-Buffering", "no")
+
+	if _, err := io.WriteString(w, "retry: 3000\n\n"); err != nil {
+		return
+	}
+
+	lastKind := ""
+	lastMessage := ""
+	writeStatus := func() error {
+		status := s.currentBackendStatus(nil)
+		if status.Kind == lastKind && status.Message == lastMessage {
+			return nil
+		}
+		if err := writeSSEJSON(w, flusher, "status", map[string]any{
+			"kind":    status.Kind,
+			"message": status.Message,
+		}); err != nil {
+			return err
+		}
+		lastKind = status.Kind
+		lastMessage = status.Message
+		return nil
+	}
+
+	if err := writeStatus(); err != nil {
+		return
+	}
+
+	pollTicker := time.NewTicker(streamPollInterval)
+	defer pollTicker.Stop()
+
+	keepaliveTicker := time.NewTicker(streamKeepaliveInterval)
+	defer keepaliveTicker.Stop()
+
+	for {
+		select {
+		case <-streamCtx.Done():
+			return
+		case <-pollTicker.C:
+			if err := writeStatus(); err != nil {
+				return
+			}
+		case <-keepaliveTicker.C:
+			if _, err := io.WriteString(w, ": ping\n\n"); err != nil {
+				return
+			}
+			flusher.Flush()
+		}
+	}
+}
+
 func (s *Server) writeLiveUpdate(w io.Writer, flusher http.Flusher, ctx context.Context, params viewParams) error {
 	view, err := s.buildDashboardView(ctx, params)
 	if err != nil {
@@ -402,9 +480,6 @@ func (s *Server) renderDashboard(w http.ResponseWriter, ctx context.Context, par
 			BackendStatusKind:    status.Kind,
 			BackendStatusMessage: status.Message,
 		}
-		if flash.Message == "" {
-			flash = flashMessage{Kind: "error", Message: err.Error()}
-		}
 	}
 	view.Flash = flash
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
@@ -466,6 +541,13 @@ func (s *Server) buildDashboardView(ctx context.Context, params viewParams) (das
 }
 
 func (s *Server) currentBackendStatus(fallbackErr error) domain.BackendStatus {
+	if fallbackErr != nil {
+		return domain.BackendStatus{
+			Kind:    "error",
+			Message: fallbackErr.Error(),
+		}
+	}
+
 	type backendStatusProvider interface {
 		BackendStatus() domain.BackendStatus
 	}
@@ -483,12 +565,6 @@ func (s *Server) currentBackendStatus(fallbackErr error) domain.BackendStatus {
 		}
 	}
 
-	if fallbackErr != nil {
-		return domain.BackendStatus{
-			Kind:    "error",
-			Message: fallbackErr.Error(),
-		}
-	}
 	return domain.BackendStatus{}
 }
 
@@ -772,6 +848,23 @@ func writeSSEHTML(w io.Writer, flusher http.Flusher, event, html string) error {
 		}
 	}
 	if _, err := io.WriteString(w, "\n"); err != nil {
+		return err
+	}
+	flusher.Flush()
+	return nil
+}
+
+func writeSSEJSON(w io.Writer, flusher http.Flusher, event string, payload map[string]any) error {
+	data, err := json.Marshal(payload)
+	if err != nil {
+		return err
+	}
+	if event != "" {
+		if _, err := fmt.Fprintf(w, "event: %s\n", event); err != nil {
+			return err
+		}
+	}
+	if _, err := fmt.Fprintf(w, "data: %s\n\n", data); err != nil {
 		return err
 	}
 	flusher.Flush()

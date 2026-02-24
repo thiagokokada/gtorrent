@@ -10,6 +10,7 @@
   let transientMessage = null;
   let transientTimer = 0;
   let messageHideTimer = 0;
+  let backendStatusStream = null;
 
   function dashboardEl() {
     return document.querySelector("#dashboard");
@@ -53,6 +54,21 @@
       dot.classList.remove(value);
     }
     dot.classList.add(state);
+  }
+
+  function parseStatusPayload(raw) {
+    if (!raw || typeof raw !== "string") {
+      return { kind: "", message: "" };
+    }
+    try {
+      const parsed = JSON.parse(raw);
+      return {
+        kind: typeof parsed.kind === "string" ? parsed.kind : "",
+        message: typeof parsed.message === "string" ? parsed.message : "",
+      };
+    } catch (_err) {
+      return { kind: "", message: "" };
+    }
   }
 
   function clearTransientMessage() {
@@ -118,31 +134,34 @@
 
   function syncBackendFromStats() {
     const stats = document.querySelector("#global-stats");
-    if (!stats) {
-      return;
-    }
-    const kind = (stats.dataset.backendStatusKind || "").trim();
-    const message = (stats.dataset.backendStatusMessage || "").trim();
+    const table = document.querySelector("#torrents-body");
+
+    const kind = ((table && table.dataset.backendStatusKind) || (stats && stats.dataset.backendStatusKind) || "").trim();
+    const message = ((table && table.dataset.backendStatusMessage) || (stats && stats.dataset.backendStatusMessage) || "").trim();
     setBackendStatus(kind, message);
   }
 
-  function backendStatusFromStatsHTML(html) {
-    const raw = (html || "").trim();
-    if (raw === "") {
+  function backendStatusFromHTML(html) {
+    if (!html || typeof html !== "string") {
       return { kind: "", message: "" };
     }
 
     const tpl = document.createElement("template");
-    tpl.innerHTML = raw;
-    const stats = tpl.content.querySelector("#global-stats");
-    if (!stats) {
+    tpl.innerHTML = html.trim();
+    const source = tpl.content.querySelector("#torrents-body, #global-stats");
+    if (!source) {
       return { kind: "", message: "" };
     }
 
-    return {
-      kind: (stats.dataset.backendStatusKind || "").trim(),
-      message: (stats.dataset.backendStatusMessage || "").trim(),
-    };
+    const kind = (
+      source.dataset.backendStatusKind ||
+      ""
+    ).trim();
+    const message = (
+      source.dataset.backendStatusMessage ||
+      ""
+    ).trim();
+    return { kind, message };
   }
 
   function setConnectionState(state, err) {
@@ -488,6 +507,28 @@
     }
   }
 
+  function startBackendStatusStream() {
+    if (!("EventSource" in window)) {
+      return;
+    }
+
+    if (backendStatusStream) {
+      backendStatusStream.close();
+      backendStatusStream = null;
+    }
+
+    try {
+      backendStatusStream = new EventSource("/ui/backend-status/stream");
+    } catch (_err) {
+      return;
+    }
+
+    backendStatusStream.addEventListener("status", function (event) {
+      const payload = parseStatusPayload(event.data);
+      setBackendStatus(payload.kind, payload.message);
+    });
+  }
+
   function eventElement(event) {
     return event.target instanceof Element ? event.target : null;
   }
@@ -637,15 +678,25 @@
 
   document.body.addEventListener("htmx:sseMessage", function (event) {
     const detail = event.detail;
-    if (!detail || detail.type !== "stats") {
-      return;
+    if (detail && typeof detail.data === "string") {
+      const status = backendStatusFromHTML(detail.data);
+      if (status.kind !== "" || status.message !== "") {
+        setBackendStatus(status.kind, status.message);
+        return;
+      }
     }
-
-    const status = backendStatusFromStatsHTML(detail.data);
-    setBackendStatus(status.kind, status.message);
+    syncBackendFromStats();
   });
 
   document.addEventListener("DOMContentLoaded", function () {
     syncDashboard();
+    startBackendStatusStream();
+  });
+
+  window.addEventListener("beforeunload", function () {
+    if (backendStatusStream) {
+      backendStatusStream.close();
+      backendStatusStream = null;
+    }
   });
 })();

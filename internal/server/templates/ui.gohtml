@@ -130,7 +130,7 @@
 {{end}}
 
 {{define "table"}}
-<tbody id="torrents-body" sse-swap="table" hx-swap="outerHTML">
+<tbody id="torrents-body" sse-swap="table" hx-swap="outerHTML" data-backend-status-kind="{{.BackendStatusKind}}" data-backend-status-message="{{.BackendStatusMessage}}">
   {{if .Torrents}}
     {{range .Torrents}}
       <tr data-hash="{{.Hash}}" data-running="{{if .Running}}1{{else}}0{{end}}" class="{{if .Active}}active{{end}}">
