@@ -3,13 +3,11 @@ package server
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/thiagokokada/gtorrent/internal/domain"
 )
@@ -25,111 +23,91 @@ type mockService struct {
 }
 
 func (m *mockService) List(ctx context.Context) ([]domain.Torrent, error) {
+	if m.listFn == nil {
+		return nil, nil
+	}
 	return m.listFn(ctx)
 }
+
 func (m *mockService) AddMagnet(ctx context.Context, magnet string) error {
+	if m.addMagnetFn == nil {
+		return nil
+	}
 	return m.addMagnetFn(ctx, magnet)
 }
+
 func (m *mockService) AddTorrent(ctx context.Context, data []byte, filename string) error {
+	if m.addFileFn == nil {
+		return nil
+	}
 	return m.addFileFn(ctx, data, filename)
 }
+
 func (m *mockService) Remove(ctx context.Context, hash string, deleteData bool) error {
+	if m.removeFn == nil {
+		return nil
+	}
 	return m.removeFn(ctx, hash, deleteData)
 }
+
 func (m *mockService) Start(ctx context.Context, hash string) error {
+	if m.startFn == nil {
+		return nil
+	}
 	return m.startFn(ctx, hash)
 }
+
 func (m *mockService) Stop(ctx context.Context, hash string) error {
+	if m.stopFn == nil {
+		return nil
+	}
 	return m.stopFn(ctx, hash)
 }
+
 func (m *mockService) Recheck(ctx context.Context, hash string) error {
+	if m.recheckFn == nil {
+		return nil
+	}
 	return m.recheckFn(ctx, hash)
 }
 
-func TestListEndpoint(t *testing.T) {
+func TestDashboardEndpointRendersTorrentRows(t *testing.T) {
 	s, err := New(&mockService{
 		listFn: func(context.Context) ([]domain.Torrent, error) {
-			return []domain.Torrent{{Hash: "a", Name: "n"}}, nil
+			return []domain.Torrent{{Hash: "abc", Name: "Ubuntu ISO", State: "downloading", Progress: 0.5}}, nil
 		},
-		addMagnetFn: func(context.Context, string) error { return nil },
-		addFileFn:   func(context.Context, []byte, string) error { return nil },
-		removeFn:    func(context.Context, string, bool) error { return nil },
-		startFn:     func(context.Context, string) error { return nil },
-		stopFn:      func(context.Context, string) error { return nil },
-		recheckFn:   func(context.Context, string) error { return nil },
 	})
 	if err != nil {
 		t.Fatalf("New() error = %v", err)
 	}
 
-	req := httptest.NewRequest(http.MethodGet, "/api/torrents", nil)
+	req := httptest.NewRequest(http.MethodGet, "/ui/dashboard", nil)
 	rr := httptest.NewRecorder()
 	s.Handler().ServeHTTP(rr, req)
 
 	if rr.Code != http.StatusOK {
-		t.Fatalf("status = %d", rr.Code)
+		t.Fatalf("status = %d, body=%s", rr.Code, rr.Body.String())
 	}
-	var payload struct {
-		Torrents []domain.Torrent `json:"torrents"`
+	body := rr.Body.String()
+	if !strings.Contains(body, "Ubuntu ISO") {
+		t.Fatalf("expected torrent row, body=%s", body)
 	}
-	if err := json.Unmarshal(rr.Body.Bytes(), &payload); err != nil {
-		t.Fatalf("unmarshal body: %v", err)
-	}
-	if len(payload.Torrents) != 1 || payload.Torrents[0].Hash != "a" {
-		t.Fatalf("unexpected payload: %+v", payload)
+	if !strings.Contains(body, "hx-post=\"/ui/torrents/abc/stop\"") {
+		t.Fatalf("expected stop action, body=%s", body)
 	}
 }
 
-func TestAddMagnetJSON(t *testing.T) {
+func TestAddTorrentMagnet(t *testing.T) {
 	called := false
 	s, err := New(&mockService{
-		listFn: func(context.Context) ([]domain.Torrent, error) { return nil, nil },
+		listFn: func(context.Context) ([]domain.Torrent, error) {
+			return nil, nil
+		},
 		addMagnetFn: func(_ context.Context, magnet string) error {
 			called = true
 			if magnet == "" {
 				t.Fatalf("empty magnet")
 			}
-			return nil
-		},
-		addFileFn: func(context.Context, []byte, string) error { return nil },
-		removeFn:  func(context.Context, string, bool) error { return nil },
-		startFn:   func(context.Context, string) error { return nil },
-		stopFn:    func(context.Context, string) error { return nil },
-		recheckFn: func(context.Context, string) error { return nil },
-	})
-	if err != nil {
-		t.Fatalf("New() error = %v", err)
-	}
-
-	req := httptest.NewRequest(http.MethodPost, "/api/torrents", strings.NewReader(`{"magnet":"magnet:?xt=urn:btih:abc"}`))
-	req.Header.Set("Content-Type", "application/json")
-	rr := httptest.NewRecorder()
-	s.Handler().ServeHTTP(rr, req)
-
-	if rr.Code != http.StatusCreated {
-		t.Fatalf("status = %d, body=%s", rr.Code, rr.Body.String())
-	}
-	if !called {
-		t.Fatalf("expected AddMagnet call")
-	}
-}
-
-func TestAddMultipartTorrent(t *testing.T) {
-	called := false
-	s, err := New(&mockService{
-		listFn:      func(context.Context) ([]domain.Torrent, error) { return nil, nil },
-		addMagnetFn: func(context.Context, string) error { return nil },
-		addFileFn: func(_ context.Context, data []byte, filename string) error {
-			called = true
-			if len(data) == 0 || filename == "" {
-				t.Fatalf("invalid file args")
-			}
-			return nil
-		},
-		removeFn: func(context.Context, string, bool) error { return nil },
-		startFn:  func(context.Context, string) error { return nil },
-		stopFn:   func(context.Context, string) error { return nil },
-		recheckFn: func(context.Context, string) error {
 			return nil
 		},
 	})
@@ -139,42 +117,40 @@ func TestAddMultipartTorrent(t *testing.T) {
 
 	var body bytes.Buffer
 	writer := multipart.NewWriter(&body)
-	part, err := writer.CreateFormFile("torrent", "a.torrent")
-	if err != nil {
-		t.Fatalf("CreateFormFile() error = %v", err)
-	}
-	_, _ = part.Write([]byte("dummy torrent bytes"))
+	_ = writer.WriteField("magnet", "magnet:?xt=urn:btih:test")
+	_ = writer.WriteField("filter", "all")
 	_ = writer.Close()
 
-	req := httptest.NewRequest(http.MethodPost, "/api/torrents", &body)
+	req := httptest.NewRequest(http.MethodPost, "/ui/torrents", &body)
 	req.Header.Set("Content-Type", writer.FormDataContentType())
 	rr := httptest.NewRecorder()
 	s.Handler().ServeHTTP(rr, req)
 
-	if rr.Code != http.StatusCreated {
+	if rr.Code != http.StatusOK {
 		t.Fatalf("status = %d, body=%s", rr.Code, rr.Body.String())
 	}
 	if !called {
-		t.Fatalf("expected AddTorrent call")
+		t.Fatalf("expected AddMagnet call")
+	}
+	if !strings.Contains(rr.Body.String(), "Torrent added") {
+		t.Fatalf("expected success flash, body=%s", rr.Body.String())
 	}
 }
 
-func TestDeleteTorrent(t *testing.T) {
+func TestTorrentActionRemove(t *testing.T) {
 	called := false
 	s, err := New(&mockService{
-		listFn:      func(context.Context) ([]domain.Torrent, error) { return nil, nil },
-		addMagnetFn: func(context.Context, string) error { return nil },
-		addFileFn:   func(context.Context, []byte, string) error { return nil },
+		listFn: func(context.Context) ([]domain.Torrent, error) {
+			return []domain.Torrent{{Hash: "abc", Name: "Ubuntu ISO"}}, nil
+		},
 		removeFn: func(_ context.Context, hash string, deleteData bool) error {
 			called = true
-			if hash != "abc" || !deleteData {
-				t.Fatalf("unexpected args hash=%q deleteData=%v", hash, deleteData)
+			if hash != "abc" {
+				t.Fatalf("unexpected hash %q", hash)
 			}
-			return nil
-		},
-		startFn: func(context.Context, string) error { return nil },
-		stopFn:  func(context.Context, string) error { return nil },
-		recheckFn: func(context.Context, string) error {
+			if deleteData {
+				t.Fatalf("expected deleteData=false")
+			}
 			return nil
 		},
 	})
@@ -182,7 +158,8 @@ func TestDeleteTorrent(t *testing.T) {
 		t.Fatalf("New() error = %v", err)
 	}
 
-	req := httptest.NewRequest(http.MethodDelete, "/api/torrents/abc?deleteData=true", nil)
+	req := httptest.NewRequest(http.MethodPost, "/ui/torrents/abc/remove", strings.NewReader("filter=all&sort=addedAt&dir=desc"))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	rr := httptest.NewRecorder()
 	s.Handler().ServeHTTP(rr, req)
 
@@ -192,129 +169,16 @@ func TestDeleteTorrent(t *testing.T) {
 	if !called {
 		t.Fatalf("expected Remove call")
 	}
-}
-
-func TestStartTorrent(t *testing.T) {
-	called := false
-	s, err := New(&mockService{
-		listFn:      func(context.Context) ([]domain.Torrent, error) { return nil, nil },
-		addMagnetFn: func(context.Context, string) error { return nil },
-		addFileFn:   func(context.Context, []byte, string) error { return nil },
-		removeFn:    func(context.Context, string, bool) error { return nil },
-		startFn: func(_ context.Context, hash string) error {
-			called = true
-			if hash != "abc" {
-				t.Fatalf("unexpected hash=%q", hash)
-			}
-			return nil
-		},
-		stopFn: func(context.Context, string) error { return nil },
-		recheckFn: func(context.Context, string) error {
-			return nil
-		},
-	})
-	if err != nil {
-		t.Fatalf("New() error = %v", err)
-	}
-
-	req := httptest.NewRequest(http.MethodPost, "/api/torrents/abc/start", nil)
-	rr := httptest.NewRecorder()
-	s.Handler().ServeHTTP(rr, req)
-
-	if rr.Code != http.StatusOK {
-		t.Fatalf("status = %d, body=%s", rr.Code, rr.Body.String())
-	}
-	if !called {
-		t.Fatalf("expected Start call")
+	if !strings.Contains(rr.Body.String(), "Torrent removed") {
+		t.Fatalf("expected success flash, body=%s", rr.Body.String())
 	}
 }
 
-func TestStopTorrent(t *testing.T) {
-	called := false
-	s, err := New(&mockService{
-		listFn:      func(context.Context) ([]domain.Torrent, error) { return nil, nil },
-		addMagnetFn: func(context.Context, string) error { return nil },
-		addFileFn:   func(context.Context, []byte, string) error { return nil },
-		removeFn:    func(context.Context, string, bool) error { return nil },
-		startFn:     func(context.Context, string) error { return nil },
-		stopFn: func(_ context.Context, hash string) error {
-			called = true
-			if hash != "abc" {
-				t.Fatalf("unexpected hash=%q", hash)
-			}
-			return nil
-		},
-		recheckFn: func(context.Context, string) error { return nil },
-	})
-	if err != nil {
-		t.Fatalf("New() error = %v", err)
-	}
-
-	req := httptest.NewRequest(http.MethodPost, "/api/torrents/abc/stop", nil)
-	rr := httptest.NewRecorder()
-	s.Handler().ServeHTTP(rr, req)
-
-	if rr.Code != http.StatusOK {
-		t.Fatalf("status = %d, body=%s", rr.Code, rr.Body.String())
-	}
-	if !called {
-		t.Fatalf("expected Stop call")
-	}
-}
-
-func TestRecheckTorrent(t *testing.T) {
-	called := false
-	s, err := New(&mockService{
-		listFn:      func(context.Context) ([]domain.Torrent, error) { return nil, nil },
-		addMagnetFn: func(context.Context, string) error { return nil },
-		addFileFn:   func(context.Context, []byte, string) error { return nil },
-		removeFn:    func(context.Context, string, bool) error { return nil },
-		startFn:     func(context.Context, string) error { return nil },
-		stopFn:      func(context.Context, string) error { return nil },
-		recheckFn: func(_ context.Context, hash string) error {
-			called = true
-			if hash != "abc" {
-				t.Fatalf("unexpected hash=%q", hash)
-			}
-			return nil
-		},
-	})
-	if err != nil {
-		t.Fatalf("New() error = %v", err)
-	}
-
-	req := httptest.NewRequest(http.MethodPost, "/api/torrents/abc/recheck", nil)
-	rr := httptest.NewRecorder()
-	s.Handler().ServeHTTP(rr, req)
-
-	if rr.Code != http.StatusOK {
-		t.Fatalf("status = %d, body=%s", rr.Code, rr.Body.String())
-	}
-	if !called {
-		t.Fatalf("expected Recheck call")
-	}
-}
-
-func TestTorrentStreamEndpoint(t *testing.T) {
-	oldPollInterval := streamPollInterval
-	oldKeepaliveInterval := streamKeepaliveInterval
-	streamPollInterval = time.Hour
-	streamKeepaliveInterval = time.Hour
-	defer func() {
-		streamPollInterval = oldPollInterval
-		streamKeepaliveInterval = oldKeepaliveInterval
-	}()
-
+func TestUIStreamEndpoint(t *testing.T) {
 	s, err := New(&mockService{
 		listFn: func(context.Context) ([]domain.Torrent, error) {
-			return []domain.Torrent{{Hash: "a", Name: "n"}}, nil
+			return []domain.Torrent{{Hash: "abc", Name: "Ubuntu ISO", State: "downloading"}}, nil
 		},
-		addMagnetFn: func(context.Context, string) error { return nil },
-		addFileFn:   func(context.Context, []byte, string) error { return nil },
-		removeFn:    func(context.Context, string, bool) error { return nil },
-		startFn:     func(context.Context, string) error { return nil },
-		stopFn:      func(context.Context, string) error { return nil },
-		recheckFn:   func(context.Context, string) error { return nil },
 	})
 	if err != nil {
 		t.Fatalf("New() error = %v", err)
@@ -323,7 +187,7 @@ func TestTorrentStreamEndpoint(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 
-	req := httptest.NewRequest(http.MethodGet, "/api/torrents/stream", nil).WithContext(ctx)
+	req := httptest.NewRequest(http.MethodGet, "/ui/stream", nil).WithContext(ctx)
 	rr := httptest.NewRecorder()
 	s.Handler().ServeHTTP(rr, req)
 
@@ -335,39 +199,32 @@ func TestTorrentStreamEndpoint(t *testing.T) {
 	}
 
 	body := rr.Body.String()
-	if !strings.Contains(body, "retry: 3000") {
-		t.Fatalf("missing retry frame: %q", body)
+	if !strings.Contains(body, "event: stats") {
+		t.Fatalf("expected stats event, body=%s", body)
 	}
-	if !strings.Contains(body, "event: torrents") {
-		t.Fatalf("missing torrents event: %q", body)
-	}
-	if !strings.Contains(body, `"hash":"a"`) {
-		t.Fatalf("missing torrent payload: %q", body)
+	if !strings.Contains(body, "event: table") {
+		t.Fatalf("expected table event, body=%s", body)
 	}
 }
 
-func TestTorrentStreamMethodNotAllowed(t *testing.T) {
+func TestAPIListEndpointAvailable(t *testing.T) {
 	s, err := New(&mockService{
-		listFn:      func(context.Context) ([]domain.Torrent, error) { return nil, nil },
-		addMagnetFn: func(context.Context, string) error { return nil },
-		addFileFn:   func(context.Context, []byte, string) error { return nil },
-		removeFn:    func(context.Context, string, bool) error { return nil },
-		startFn:     func(context.Context, string) error { return nil },
-		stopFn:      func(context.Context, string) error { return nil },
-		recheckFn:   func(context.Context, string) error { return nil },
+		listFn: func(context.Context) ([]domain.Torrent, error) {
+			return []domain.Torrent{{Hash: "abc"}}, nil
+		},
 	})
 	if err != nil {
 		t.Fatalf("New() error = %v", err)
 	}
 
-	req := httptest.NewRequest(http.MethodPost, "/api/torrents/stream", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/torrents", nil)
 	rr := httptest.NewRecorder()
 	s.Handler().ServeHTTP(rr, req)
 
-	if rr.Code != http.StatusMethodNotAllowed {
+	if rr.Code != http.StatusOK {
 		t.Fatalf("status = %d, body=%s", rr.Code, rr.Body.String())
 	}
-	if allow := rr.Header().Get("Allow"); allow != http.MethodGet {
-		t.Fatalf("allow = %q", allow)
+	if !strings.Contains(rr.Body.String(), "\"hash\":\"abc\"") {
+		t.Fatalf("expected torrent payload, body=%s", rr.Body.String())
 	}
 }

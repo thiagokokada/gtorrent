@@ -1,0 +1,161 @@
+{{define "dashboard"}}
+<section id="dashboard" class="dashboard" hx-ext="sse" sse-connect="{{.StreamURL}}">
+  <header class="toolbar">
+    <form id="view-form" class="view-form"
+      hx-get="/ui/dashboard"
+      hx-target="#dashboard"
+      hx-swap="outerHTML"
+      hx-trigger="submit, change delay:100ms from:select, input changed delay:350ms from:input[name='q']">
+      <label>
+        <span>Search</span>
+        <input type="search" name="q" value="{{.Params.Query}}" placeholder="Name or hash">
+      </label>
+      <label>
+        <span>Filter</span>
+        <select name="filter">
+          <option value="all" {{if eq .Params.Filter "all"}}selected{{end}}>All</option>
+          <option value="downloading" {{if eq .Params.Filter "downloading"}}selected{{end}}>Downloading</option>
+          <option value="seeding" {{if eq .Params.Filter "seeding"}}selected{{end}}>Seeding</option>
+          <option value="complete" {{if eq .Params.Filter "complete"}}selected{{end}}>Complete</option>
+          <option value="stopped" {{if eq .Params.Filter "stopped"}}selected{{end}}>Stopped</option>
+          <option value="unknown" {{if eq .Params.Filter "unknown"}}selected{{end}}>Unknown</option>
+        </select>
+      </label>
+      <label>
+        <span>Sort</span>
+        <select name="sort">
+          <option value="addedAt" {{if eq .Params.Sort "addedAt"}}selected{{end}}>Added</option>
+          <option value="name" {{if eq .Params.Sort "name"}}selected{{end}}>Name</option>
+          <option value="state" {{if eq .Params.Sort "state"}}selected{{end}}>State</option>
+          <option value="progress" {{if eq .Params.Sort "progress"}}selected{{end}}>Done</option>
+          <option value="etaSeconds" {{if eq .Params.Sort "etaSeconds"}}selected{{end}}>ETA</option>
+          <option value="ratio" {{if eq .Params.Sort "ratio"}}selected{{end}}>Ratio</option>
+          <option value="peers" {{if eq .Params.Sort "peers"}}selected{{end}}>Peers</option>
+          <option value="seeds" {{if eq .Params.Sort "seeds"}}selected{{end}}>Seeds</option>
+          <option value="downRate" {{if eq .Params.Sort "downRate"}}selected{{end}}>Down</option>
+          <option value="upRate" {{if eq .Params.Sort "upRate"}}selected{{end}}>Up</option>
+          <option value="sizeBytes" {{if eq .Params.Sort "sizeBytes"}}selected{{end}}>Size</option>
+        </select>
+      </label>
+      <label>
+        <span>Direction</span>
+        <select name="dir">
+          <option value="desc" {{if eq .Params.Dir "desc"}}selected{{end}}>Desc</option>
+          <option value="asc" {{if eq .Params.Dir "asc"}}selected{{end}}>Asc</option>
+        </select>
+      </label>
+      <button type="submit" class="refresh">Refresh</button>
+    </form>
+
+    <form class="add-form" enctype="multipart/form-data"
+      hx-post="/ui/torrents"
+      hx-target="#dashboard"
+      hx-swap="outerHTML"
+      hx-include="#view-form">
+      <label>
+        <span>Magnet</span>
+        <input type="url" name="magnet" placeholder="magnet:?xt=urn:btih:...">
+      </label>
+      <label>
+        <span>.torrent</span>
+        <input type="file" name="torrent" accept=".torrent,application/x-bittorrent">
+      </label>
+      <button type="submit">Add</button>
+    </form>
+  </header>
+
+  {{template "flash" .}}
+  {{template "stats" .}}
+  {{template "table" .}}
+</section>
+{{end}}
+
+{{define "flash"}}
+<div id="flash-region" class="flash-region">
+  {{if .Flash.Message}}
+  <article class="flash flash-{{.Flash.Kind}}">{{.Flash.Message}}</article>
+  {{end}}
+</div>
+{{end}}
+
+{{define "stats"}}
+<div id="stats-region" class="stats" sse-swap="stats" hx-swap="outerHTML">
+  <span><strong>{{.VisibleCount}}</strong> torrents</span>
+  <span>Down <strong>{{.TotalDownRate}}</strong></span>
+  <span>Up <strong>{{.TotalUpRate}}</strong></span>
+</div>
+{{end}}
+
+{{define "table"}}
+<div id="table-region" class="table-wrap" sse-swap="table" hx-swap="outerHTML">
+  <table role="grid">
+    <thead>
+      <tr>
+        <th>Name</th>
+        <th>State</th>
+        <th>Added</th>
+        <th>Done</th>
+        <th>ETA</th>
+        <th>Ratio</th>
+        <th>Peers</th>
+        <th>Seeds</th>
+        <th>Down</th>
+        <th>Up</th>
+        <th>Size</th>
+        <th>Actions</th>
+      </tr>
+    </thead>
+    <tbody>
+      {{if .Torrents}}
+        {{range .Torrents}}
+          <tr>
+            <td class="name" title="{{.Hash}}">{{.Name}}</td>
+            <td><span class="state {{.StateClass}}">{{.State}}</span></td>
+            <td>{{.AddedAt}}</td>
+            <td>
+              <div class="progress-wrap">
+                <progress value="{{.ProgressValue}}" max="1"></progress>
+                <span>{{.ProgressPct}}%</span>
+              </div>
+            </td>
+            <td>{{.ETA}}</td>
+            <td>{{.Ratio}}</td>
+            <td>{{.Peers}}</td>
+            <td>{{.Seeds}}</td>
+            <td>{{.DownRate}}</td>
+            <td>{{.UpRate}}</td>
+            <td>{{.Size}}</td>
+            <td>
+              <div class="row-actions">
+                <form hx-post="/ui/torrents/{{.Hash}}/{{.ToggleAction}}"
+                  hx-target="#dashboard"
+                  hx-swap="outerHTML"
+                  hx-include="#view-form">
+                  <button type="submit">{{.ToggleLabel}}</button>
+                </form>
+                <form hx-post="/ui/torrents/{{.Hash}}/recheck"
+                  hx-target="#dashboard"
+                  hx-swap="outerHTML"
+                  hx-include="#view-form">
+                  <button type="submit" class="secondary">Recheck</button>
+                </form>
+                <form hx-post="/ui/torrents/{{.Hash}}/remove"
+                  hx-target="#dashboard"
+                  hx-swap="outerHTML"
+                  hx-include="#view-form"
+                  hx-confirm="Remove {{.Name}}?">
+                  <button type="submit" class="danger">Remove</button>
+                </form>
+              </div>
+            </td>
+          </tr>
+        {{end}}
+      {{else}}
+        <tr>
+          <td colspan="12" class="placeholder">No torrents in this view</td>
+        </tr>
+      {{end}}
+    </tbody>
+  </table>
+</div>
+{{end}}

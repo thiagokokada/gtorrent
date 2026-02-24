@@ -13,6 +13,7 @@ No Node.js or frontend build tooling is required. The UI is static HTML/CSS/JS s
 - Add torrents from magnet links
 - Add torrents from `.torrent` files
 - Remove torrents
+- Live table/stat updates over SSE
 - Works in modern Chrome and Firefox
 
 ## Project Layout
@@ -24,7 +25,8 @@ No Node.js or frontend build tooling is required. The UI is static HTML/CSS/JS s
 - `internal/rtorrent/xmlrpc`: XML-RPC codec and client interface
 - `internal/rtorrent/transport/http`: HTTP XML-RPC transport
 - `internal/rtorrent/transport/scgi`: Unix SCGI transport
-- `internal/server`: HTTP API + static frontend
+- `internal/server`: HTTP handlers + static/htmx UI rendering
+- `internal/server/templates`: HTML templates used by `/ui/*` endpoints
 
 ## Quick Start
 
@@ -71,13 +73,22 @@ Flags and env vars are both supported:
 - `--rtorrent-http-user` / `GTORRENT_HTTP_USER`
 - `--rtorrent-http-pass` / `GTORRENT_HTTP_PASS`
 
-## API
+## API Endpoints
 
 - `GET /api/torrents`
 - `POST /api/torrents`
   - JSON: `{"magnet":"magnet:?xt=..."}`
   - Multipart: `magnet=<...>` and/or file field `torrent`
 - `DELETE /api/torrents/{hash}?deleteData=true|false`
+- `POST /api/torrents/{hash}/{action}` where action is `start`, `stop`, or `recheck`
+- `GET /api/torrents/stream` (SSE JSON updates)
+
+## UI Endpoints
+
+- `GET /ui/dashboard`
+- `POST /ui/torrents`
+- `POST /ui/torrents/{hash}/{action}` where action is `start`, `stop`, `recheck`, or `remove`
+- `GET /ui/stream` (SSE updates for table/stats fragments)
 
 ## Testing
 
