@@ -13,6 +13,8 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/lmittmann/tint"
+
 	"gtorrent/internal/config"
 	"gtorrent/internal/rtorrent"
 	"gtorrent/internal/rtorrent/transport"
@@ -86,8 +88,13 @@ func configureLogger(verbose bool) {
 	if verbose {
 		level = slog.LevelDebug
 	}
-	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{
-		Level: level,
+	noColor := false
+	if v, ok := os.LookupEnv("NO_COLOR"); ok && v != "" {
+		noColor = true
+	}
+	logger := slog.New(tint.NewHandler(os.Stderr, &tint.Options{
+		Level:   level,
+		NoColor: noColor,
 	}))
 	slog.SetDefault(logger)
 }
