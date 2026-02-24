@@ -38,4 +38,5 @@ This file provides guidance for coding agents and contributors working in this r
 ## Commits
 
 - Use clear, scoped commit messages.
+- Commit messages must use sentence case (capitalize only the first word, except proper nouns/acronyms).
 - Avoid mixing unrelated changes in the same commit.
