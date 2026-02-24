@@ -1,4 +1,4 @@
-module gtorrent
+module github.com/thiagokokada/gtorrent
 
 go 1.22
 

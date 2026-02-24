@@ -15,13 +15,13 @@ import (
 
 	"github.com/lmittmann/tint"
 
-	"gtorrent/internal/config"
-	"gtorrent/internal/rtorrent"
-	"gtorrent/internal/rtorrent/transport"
-	httptransport "gtorrent/internal/rtorrent/transport/http"
-	"gtorrent/internal/rtorrent/transport/scgi"
-	"gtorrent/internal/rtorrent/xmlrpc"
-	"gtorrent/internal/server"
+	"github.com/thiagokokada/gtorrent/internal/config"
+	"github.com/thiagokokada/gtorrent/internal/rtorrent"
+	"github.com/thiagokokada/gtorrent/internal/rtorrent/transport"
+	httptransport "github.com/thiagokokada/gtorrent/internal/rtorrent/transport/http"
+	"github.com/thiagokokada/gtorrent/internal/rtorrent/transport/scgi"
+	"github.com/thiagokokada/gtorrent/internal/rtorrent/xmlrpc"
+	"github.com/thiagokokada/gtorrent/internal/server"
 )
 
 func main() {

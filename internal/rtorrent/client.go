@@ -10,8 +10,8 @@ import (
 	"strings"
 	"time"
 
-	"gtorrent/internal/domain"
-	"gtorrent/internal/rtorrent/xmlrpc"
+	"github.com/thiagokokada/gtorrent/internal/domain"
+	"github.com/thiagokokada/gtorrent/internal/rtorrent/xmlrpc"
 )
 
 // Service describes torrent operations used by the HTTP handlers.

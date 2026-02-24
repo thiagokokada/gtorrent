@@ -6,7 +6,7 @@ import (
 	"log/slog"
 	"time"
 
-	"gtorrent/internal/rtorrent/transport"
+	"github.com/thiagokokada/gtorrent/internal/rtorrent/transport"
 )
 
 // Caller abstracts XML-RPC method calls and is safe to mock in tests.

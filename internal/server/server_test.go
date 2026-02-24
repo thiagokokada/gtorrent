@@ -10,7 +10,7 @@ import (
 	"strings"
 	"testing"
 
-	"gtorrent/internal/domain"
+	"github.com/thiagokokada/gtorrent/internal/domain"
 )
 
 type mockService struct {

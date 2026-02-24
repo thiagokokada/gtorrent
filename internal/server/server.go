@@ -14,7 +14,7 @@ import (
 	"strings"
 	"time"
 
-	"gtorrent/internal/domain"
+	"github.com/thiagokokada/gtorrent/internal/domain"
 )
 
 const maxTorrentUploadBytes = 16 << 20 // 16 MiB
