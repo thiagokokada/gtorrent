@@ -118,6 +118,19 @@
     renderStatusMessage();
   }
 
+  function syncBackendFromStats() {
+    const stats = document.querySelector("#global-stats");
+    if (!stats) {
+      return;
+    }
+    const nextError = (stats.dataset.backendError || "").trim();
+    if (nextError !== "") {
+      setBackendError(nextError);
+      return;
+    }
+    clearBackendError();
+  }
+
   function setConnectionState(state, err) {
     connectionState = state;
     connectionError = state === "offline" ? (err || "Connection error") : "";
@@ -446,6 +459,7 @@
     syncActionButtons();
     syncFilterButtons();
     syncSortLabels();
+    syncBackendFromStats();
     setConnectionDot(connectionState);
     if (!captureFlashMessage()) {
       renderStatusMessage();
@@ -589,14 +603,8 @@
       return;
     }
 
-    if (target.id === "backend-error-sink") {
-      const text = target.textContent.trim();
-      setBackendError(text || "unable to query rTorrent");
-      return;
-    }
-
-    if (target.id === "backend-ok-sink") {
-      clearBackendError();
+    if (target.id === "global-stats") {
+      syncBackendFromStats();
       return;
     }
 

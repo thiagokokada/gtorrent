@@ -95,6 +95,7 @@ type dashboardView struct {
 	TotalDownRate string
 	TotalUpRate   string
 	StreamURL     string
+	BackendError  string
 }
 
 func New(svc Service) (*Server, error) {
@@ -331,6 +332,7 @@ func (s *Server) writeLiveUpdate(w io.Writer, flusher http.Flusher, ctx context.
 			TotalDownRate: "0 B/s",
 			TotalUpRate:   "0 B/s",
 			StreamURL:     streamURLForParams(params),
+			BackendError:  err.Error(),
 		}
 		statsHTML, renderErr := s.renderTemplateToString("stats", fallback)
 		if renderErr != nil {
@@ -344,9 +346,6 @@ func (s *Server) writeLiveUpdate(w io.Writer, flusher http.Flusher, ctx context.
 			return writeErr
 		}
 		if writeErr := writeSSEHTML(w, flusher, "table", tableHTML); writeErr != nil {
-			return writeErr
-		}
-		if writeErr := writeSSEText(w, flusher, "backend-error", err.Error()); writeErr != nil {
 			return writeErr
 		}
 		return nil
@@ -364,9 +363,6 @@ func (s *Server) writeLiveUpdate(w io.Writer, flusher http.Flusher, ctx context.
 		return err
 	}
 	if err := writeSSEHTML(w, flusher, "table", tableHTML); err != nil {
-		return err
-	}
-	if err := writeSSEText(w, flusher, "backend-ok", "ok"); err != nil {
 		return err
 	}
 	return nil
@@ -399,6 +395,7 @@ func (s *Server) renderDashboard(w http.ResponseWriter, ctx context.Context, par
 			TotalDownRate: "0 B/s",
 			TotalUpRate:   "0 B/s",
 			StreamURL:     streamURLForParams(params),
+			BackendError:  err.Error(),
 		}
 		if flash.Message == "" {
 			flash = flashMessage{Kind: "error", Message: err.Error()}
@@ -457,6 +454,7 @@ func (s *Server) buildDashboardView(ctx context.Context, params viewParams) (das
 		TotalDownRate: formatRate(downTotal),
 		TotalUpRate:   formatRate(upTotal),
 		StreamURL:     streamURLForParams(params),
+		BackendError:  "",
 	}, nil
 }
 
@@ -735,24 +733,6 @@ func writeSSEHTML(w io.Writer, flusher http.Flusher, event, html string) error {
 		}
 	}
 	for _, line := range strings.Split(html, "\n") {
-		if _, err := fmt.Fprintf(w, "data: %s\n", line); err != nil {
-			return err
-		}
-	}
-	if _, err := io.WriteString(w, "\n"); err != nil {
-		return err
-	}
-	flusher.Flush()
-	return nil
-}
-
-func writeSSEText(w io.Writer, flusher http.Flusher, event, text string) error {
-	if event != "" {
-		if _, err := fmt.Fprintf(w, "event: %s\n", event); err != nil {
-			return err
-		}
-	}
-	for _, line := range strings.Split(text, "\n") {
 		if _, err := fmt.Fprintf(w, "data: %s\n", line); err != nil {
 			return err
 		}

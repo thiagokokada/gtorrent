@@ -7,8 +7,6 @@
     <input type="hidden" name="dir" id="dir-input" value="{{.Params.Dir}}">
     <input type="hidden" name="selected" id="selected-input" value="{{.Params.Selected}}">
   </form>
-  <div id="backend-error-sink" hidden sse-swap="backend-error" hx-swap="innerHTML"></div>
-  <div id="backend-ok-sink" hidden sse-swap="backend-ok" hx-swap="innerHTML"></div>
 
   <header class="topbar">
     <div class="brand-wrap">
@@ -128,7 +126,7 @@
 {{end}}
 
 {{define "stats"}}
-<div id="global-stats" class="global-stats" sse-swap="stats" hx-swap="outerHTML">{{.VisibleCount}} torrents | ↓ {{.TotalDownRate}} | ↑ {{.TotalUpRate}}</div>
+<div id="global-stats" class="global-stats" sse-swap="stats" hx-swap="outerHTML" data-backend-error="{{.BackendError}}">{{.VisibleCount}} torrents | ↓ {{.TotalDownRate}} | ↑ {{.TotalUpRate}}</div>
 {{end}}
 
 {{define "table"}}
