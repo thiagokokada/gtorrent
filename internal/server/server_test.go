@@ -6,6 +6,7 @@ import (
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -105,6 +106,30 @@ func TestDashboardEndpointRendersTorrentRows(t *testing.T) {
 	}
 	if !strings.Contains(body, "data-hash=\"abc\"") || !strings.Contains(body, "data-running=\"1\"") {
 		t.Fatalf("expected selectable running row, body=%s", body)
+	}
+}
+
+func TestUIPageHasCacheBustedUIScript(t *testing.T) {
+	s, err := New(&mockService{})
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/ui", nil)
+	rr := httptest.NewRecorder()
+	s.Handler().ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d, body=%s", rr.Code, rr.Body.String())
+	}
+
+	body := rr.Body.String()
+	matched, err := regexp.MatchString(`src="/ui\.js\?v=[0-9a-f]{16}"`, body)
+	if err != nil {
+		t.Fatalf("regexp error = %v", err)
+	}
+	if !matched {
+		t.Fatalf("expected cache-busted ui.js script tag, body=%s", body)
 	}
 }
 

@@ -2,7 +2,9 @@ package server
 
 import (
 	"context"
+	"crypto/sha256"
 	"embed"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -48,11 +50,13 @@ type Service interface {
 }
 
 type Server struct {
-	svc        Service
-	staticRoot http.Handler
-	templates  *template.Template
-	streamStop chan struct{}
-	streamOnce sync.Once
+	svc           Service
+	staticRoot    http.Handler
+	templates     *template.Template
+	indexTemplate *template.Template
+	uiJSVersion   string
+	streamStop    chan struct{}
+	streamOnce    sync.Once
 }
 
 type viewParams struct {
@@ -99,6 +103,10 @@ type dashboardView struct {
 	BackendStatusMessage string
 }
 
+type indexView struct {
+	UIJSVersion string
+}
+
 func New(svc Service) (*Server, error) {
 	sub, err := fs.Sub(staticFS, "static")
 	if err != nil {
@@ -110,11 +118,23 @@ func New(svc Service) (*Server, error) {
 		return nil, fmt.Errorf("parse templates: %w", err)
 	}
 
+	indexTpl, err := template.ParseFS(staticFS, "static/index.html")
+	if err != nil {
+		return nil, fmt.Errorf("parse index template: %w", err)
+	}
+
+	uiJSVersion, err := staticHash("static/ui.js")
+	if err != nil {
+		return nil, fmt.Errorf("hash ui.js: %w", err)
+	}
+
 	return &Server{
-		svc:        svc,
-		staticRoot: http.FileServer(http.FS(sub)),
-		templates:  tpls,
-		streamStop: make(chan struct{}),
+		svc:           svc,
+		staticRoot:    http.FileServer(http.FS(sub)),
+		templates:     tpls,
+		indexTemplate: indexTpl,
+		uiJSVersion:   uiJSVersion,
+		streamStop:    make(chan struct{}),
 	}, nil
 }
 
@@ -146,7 +166,7 @@ func (s *Server) handleUIPage(w http.ResponseWriter, r *http.Request) {
 		writeMethodNotAllowed(w, http.MethodGet, http.MethodHead)
 		return
 	}
-	http.ServeFileFS(w, r, staticFS, "static/index.html")
+	s.renderIndex(w)
 }
 
 func (s *Server) handleUIDashboard(w http.ResponseWriter, r *http.Request) {
@@ -461,10 +481,19 @@ func (s *Server) handleStatic(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if r.URL.Path == "/" {
-		http.ServeFileFS(w, r, staticFS, "static/index.html")
+		s.renderIndex(w)
 		return
 	}
 	s.staticRoot.ServeHTTP(w, r)
+}
+
+func (s *Server) renderIndex(w http.ResponseWriter) {
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-cache")
+	if err := s.indexTemplate.Execute(w, indexView{UIJSVersion: s.uiJSVersion}); err != nil {
+		slog.Error("render index failed", "error", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+	}
 }
 
 func (s *Server) renderDashboard(w http.ResponseWriter, ctx context.Context, params viewParams, flash flashMessage) {
@@ -869,6 +898,15 @@ func writeSSEJSON(w io.Writer, flusher http.Flusher, event string, payload map[s
 	}
 	flusher.Flush()
 	return nil
+}
+
+func staticHash(path string) (string, error) {
+	data, err := fs.ReadFile(staticFS, path)
+	if err != nil {
+		return "", err
+	}
+	sum := sha256.Sum256(data)
+	return hex.EncodeToString(sum[:8]), nil
 }
 
 func writeMethodNotAllowed(w http.ResponseWriter, methods ...string) {
