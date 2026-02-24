@@ -6,129 +6,17 @@
   <title>gTorrent</title>
   <link rel="icon" type="image/svg+xml" href="/favicon.svg">
   <link rel="stylesheet" href="/styles.css">
+  <script defer src="https://unpkg.com/htmx.org@1.9.12"></script>
+  <script defer src="https://unpkg.com/htmx.org/dist/ext/sse.js"></script>
+  <script defer src="/ui.js"></script>
 </head>
 <body>
-  <main class="app-shell">
-    <header class="topbar">
-      <div class="brand-wrap">
-        <div id="connection-dot" class="brand-dot connecting"></div>
-        <div>
-          <h1>gTorrent</h1>
-          <p>rTorrent Remote Client</p>
-        </div>
-      </div>
-      <div class="topbar-right">
-        <div id="global-stats" class="global-stats">0 torrents</div>
-      </div>
-    </header>
-
-    <section class="controls card">
-      <div class="controls-section">
-        <div class="section-label">Actions</div>
-        <div class="action-row">
-          <button type="button" id="open-add" class="primary">Add</button>
-          <button type="button" id="toggle-selected" class="secondary" disabled>Start</button>
-          <button type="button" id="recheck-selected" class="secondary" disabled>Recheck</button>
-          <button type="button" id="remove-selected" class="danger" disabled>Remove</button>
-          <button type="button" id="refresh" class="secondary">Refresh</button>
-        </div>
-      </div>
-      <div class="controls-divider"></div>
-      <div class="controls-section">
-        <div class="section-label">Filter View</div>
-        <div class="filter-row" id="filters">
-          <button type="button" data-filter="all" class="active">All</button>
-          <button type="button" data-filter="downloading">Downloading</button>
-          <button type="button" data-filter="seeding">Seeding</button>
-          <button type="button" data-filter="complete">Complete</button>
-          <button type="button" data-filter="stopped">Stopped</button>
-        </div>
-      </div>
-    </section>
-
-    <div id="form-message" class="message status-message is-hidden" role="status" aria-live="polite">
-      <span id="form-message-text"></span>
-      <button type="button" id="form-message-close" class="message-close" aria-label="Dismiss message">x</button>
-    </div>
-
-    <section class="table-panel card">
-      <div class="table-wrap">
-        <table id="torrent-table">
-          <colgroup>
-            <col data-col="name">
-            <col data-col="state">
-            <col data-col="addedAt">
-            <col data-col="progress">
-            <col data-col="etaSeconds">
-            <col data-col="ratio">
-            <col data-col="peers">
-            <col data-col="seeds">
-            <col data-col="downRate">
-            <col data-col="upRate">
-            <col data-col="sizeBytes">
-          </colgroup>
-          <thead>
-            <tr>
-              <th data-col="name"><button type="button" class="sort-btn" data-sort="name">Name</button></th>
-              <th data-col="state"><button type="button" class="sort-btn" data-sort="state">State</button></th>
-              <th data-col="addedAt"><button type="button" class="sort-btn" data-sort="addedAt">Added</button></th>
-              <th data-col="progress"><button type="button" class="sort-btn" data-sort="progress">Done</button></th>
-              <th data-col="etaSeconds"><button type="button" class="sort-btn" data-sort="etaSeconds">ETA</button></th>
-              <th data-col="ratio"><button type="button" class="sort-btn" data-sort="ratio">Ratio</button></th>
-              <th data-col="peers"><button type="button" class="sort-btn" data-sort="peers">Peers</button></th>
-              <th data-col="seeds"><button type="button" class="sort-btn" data-sort="seeds">Seeds</button></th>
-              <th data-col="downRate"><button type="button" class="sort-btn" data-sort="downRate">Down</button></th>
-              <th data-col="upRate"><button type="button" class="sort-btn" data-sort="upRate">Up</button></th>
-              <th data-col="sizeBytes"><button type="button" class="sort-btn" data-sort="sizeBytes">Size</button></th>
-            </tr>
-          </thead>
-          <tbody id="torrents-body">
-            <tr><td colspan="11" class="placeholder">No torrents</td></tr>
-          </tbody>
-        </table>
-      </div>
-    </section>
+  <main id="dashboard"
+    class="app-shell"
+    hx-get="/ui/dashboard"
+    hx-trigger="load"
+    hx-swap="outerHTML">
+    <section class="card" style="padding:0.7rem">Loading...</section>
   </main>
-
-  <dialog id="add-dialog" class="add-dialog">
-    <form id="add-form" class="add-form" method="dialog">
-      <h2>Add Torrent</h2>
-      <label class="field" for="magnet">
-        <span>Magnet</span>
-        <input type="url" id="magnet" name="magnet" placeholder="magnet:?xt=urn:btih:...">
-      </label>
-      <label class="field" for="torrent">
-        <span>.torrent</span>
-        <input type="file" id="torrent" name="torrent" accept=".torrent,application/x-bittorrent">
-      </label>
-      <div class="dialog-actions">
-        <button type="button" id="cancel-add" class="secondary">Cancel</button>
-        <button type="submit" id="add-btn" class="primary">Add</button>
-      </div>
-    </form>
-  </dialog>
-
-  <template id="row-template">
-    <tr>
-      <td class="name"></td>
-      <td><span class="state"></span></td>
-      <td class="added"></td>
-      <td>
-        <div class="progress-wrap">
-          <progress class="progress" max="1" value="0"></progress>
-          <span class="percent"></span>
-        </div>
-      </td>
-      <td class="eta"></td>
-      <td class="ratio"></td>
-      <td class="peers"></td>
-      <td class="seeds"></td>
-      <td class="down"></td>
-      <td class="up"></td>
-      <td class="size"></td>
-    </tr>
-  </template>
-
-  <script type="module" src="/app.js"></script>
 </body>
 </html>

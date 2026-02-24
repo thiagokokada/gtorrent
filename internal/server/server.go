@@ -56,10 +56,11 @@ type Server struct {
 }
 
 type viewParams struct {
-	Query  string
-	Filter string
-	Sort   string
-	Dir    string
+	Query    string
+	Filter   string
+	Sort     string
+	Dir      string
+	Selected string
 }
 
 type flashMessage struct {
@@ -72,6 +73,8 @@ type torrentRow struct {
 	Name          string
 	State         string
 	StateClass    string
+	Running       bool
+	Active        bool
 	AddedAt       string
 	ProgressPct   int
 	ProgressValue string
@@ -82,8 +85,6 @@ type torrentRow struct {
 	DownRate      string
 	UpRate        string
 	Size          string
-	ToggleAction  string
-	ToggleLabel   string
 }
 
 type dashboardView struct {
@@ -123,9 +124,7 @@ func (s *Server) ShutdownStreams() {
 
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
-	mux.HandleFunc("/api/torrents", s.handleAPITorrents)
-	mux.HandleFunc("/api/torrents/stream", s.handleAPIStream)
-	mux.HandleFunc("/api/torrents/", s.handleAPITorrentByHash)
+	mux.HandleFunc("/ui", s.handleUIPage)
 	mux.HandleFunc("/ui/dashboard", s.handleUIDashboard)
 	mux.HandleFunc("/ui/torrents", s.handleUIAddTorrent)
 	mux.HandleFunc("/ui/torrents/", s.handleUITorrentAction)
@@ -137,6 +136,14 @@ func (s *Server) Handler() http.Handler {
 
 func (s *Server) handleHealthz(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+}
+
+func (s *Server) handleUIPage(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet && r.Method != http.MethodHead {
+		writeMethodNotAllowed(w, http.MethodGet, http.MethodHead)
+		return
+	}
+	http.ServeFileFS(w, r, staticFS, "static/index.html")
 }
 
 func (s *Server) handleUIDashboard(w http.ResponseWriter, r *http.Request) {
@@ -315,245 +322,6 @@ func (s *Server) handleUIStream(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (s *Server) handleAPITorrents(w http.ResponseWriter, r *http.Request) {
-	switch r.Method {
-	case http.MethodGet:
-		items, err := s.svc.List(r.Context())
-		if err != nil {
-			writeError(w, http.StatusBadGateway, err.Error())
-			return
-		}
-		writeJSON(w, http.StatusOK, map[string]any{"torrents": items})
-	case http.MethodPost:
-		s.handleAPIAddTorrent(w, r)
-	default:
-		writeMethodNotAllowed(w, http.MethodGet, http.MethodPost)
-	}
-}
-
-func (s *Server) handleAPITorrentByHash(w http.ResponseWriter, r *http.Request) {
-	rawPath := strings.TrimPrefix(path.Clean(r.URL.Path), "/api/torrents/")
-	rawPath = strings.Trim(rawPath, "/")
-	if rawPath == "" || rawPath == "." {
-		writeError(w, http.StatusBadRequest, "torrent hash is required")
-		return
-	}
-
-	parts := strings.Split(rawPath, "/")
-	hash := parts[0]
-	if hash == "" || hash == "." {
-		writeError(w, http.StatusBadRequest, "torrent hash is required")
-		return
-	}
-
-	if len(parts) == 1 {
-		if r.Method != http.MethodDelete {
-			writeMethodNotAllowed(w, http.MethodDelete)
-			return
-		}
-		deleteData := strings.EqualFold(r.URL.Query().Get("deleteData"), "true")
-		if err := s.svc.Remove(r.Context(), hash, deleteData); err != nil {
-			writeError(w, http.StatusBadGateway, err.Error())
-			return
-		}
-		writeJSON(w, http.StatusOK, map[string]any{"ok": true})
-		return
-	}
-
-	if len(parts) != 2 || r.Method != http.MethodPost {
-		writeMethodNotAllowed(w, http.MethodPost)
-		return
-	}
-
-	var err error
-	switch parts[1] {
-	case "start":
-		err = s.svc.Start(r.Context(), hash)
-	case "stop":
-		err = s.svc.Stop(r.Context(), hash)
-	case "recheck":
-		err = s.svc.Recheck(r.Context(), hash)
-	default:
-		http.NotFound(w, r)
-		return
-	}
-
-	if err != nil {
-		writeError(w, http.StatusBadGateway, err.Error())
-		return
-	}
-	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
-}
-
-func (s *Server) handleAPIStream(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		writeMethodNotAllowed(w, http.MethodGet)
-		return
-	}
-
-	flusher, ok := w.(http.Flusher)
-	if !ok {
-		writeError(w, http.StatusInternalServerError, "streaming unsupported")
-		return
-	}
-
-	ctx := r.Context()
-	streamCtx, streamCancel := context.WithCancel(ctx)
-	defer streamCancel()
-	go func() {
-		select {
-		case <-s.streamStop:
-			streamCancel()
-		case <-ctx.Done():
-		}
-	}()
-
-	items, err := s.svc.List(streamCtx)
-	if err != nil {
-		writeError(w, http.StatusBadGateway, err.Error())
-		return
-	}
-
-	w.Header().Set("Content-Type", "text/event-stream")
-	w.Header().Set("Cache-Control", "no-cache")
-	w.Header().Set("Connection", "keep-alive")
-	w.Header().Set("X-Accel-Buffering", "no")
-
-	if _, err := io.WriteString(w, "retry: 3000\n\n"); err != nil {
-		return
-	}
-	if err := writeSSEJSON(w, flusher, "torrents", map[string]any{"torrents": items}); err != nil {
-		return
-	}
-
-	pollTicker := time.NewTicker(streamPollInterval)
-	defer pollTicker.Stop()
-
-	keepaliveTicker := time.NewTicker(streamKeepaliveInterval)
-	defer keepaliveTicker.Stop()
-
-	for {
-		select {
-		case <-streamCtx.Done():
-			return
-		case <-pollTicker.C:
-			items, err := s.svc.List(streamCtx)
-			if err != nil {
-				if writeErr := writeSSEJSON(w, flusher, "backend-error", map[string]any{"error": err.Error()}); writeErr != nil {
-					return
-				}
-				continue
-			}
-			if err := writeSSEJSON(w, flusher, "torrents", map[string]any{"torrents": items}); err != nil {
-				return
-			}
-		case <-keepaliveTicker.C:
-			if _, err := io.WriteString(w, ": ping\n\n"); err != nil {
-				return
-			}
-			flusher.Flush()
-		}
-	}
-}
-
-func (s *Server) handleAPIAddTorrent(w http.ResponseWriter, r *http.Request) {
-	contentType := strings.ToLower(r.Header.Get("Content-Type"))
-	switch {
-	case strings.HasPrefix(contentType, "application/json"):
-		s.handleAPIAddJSON(w, r)
-	case strings.HasPrefix(contentType, "multipart/form-data"):
-		s.handleAPIAddMultipart(w, r)
-	case strings.HasPrefix(contentType, "application/x-www-form-urlencoded") || contentType == "":
-		s.handleAPIAddForm(w, r)
-	default:
-		writeError(w, http.StatusUnsupportedMediaType, "content type not supported")
-	}
-}
-
-func (s *Server) handleAPIAddJSON(w http.ResponseWriter, r *http.Request) {
-	defer r.Body.Close()
-	var req struct {
-		Magnet string `json:"magnet"`
-	}
-	if err := json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(&req); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid json payload")
-		return
-	}
-	if req.Magnet == "" {
-		writeError(w, http.StatusBadRequest, "magnet is required")
-		return
-	}
-	if err := s.svc.AddMagnet(r.Context(), req.Magnet); err != nil {
-		writeError(w, http.StatusBadGateway, err.Error())
-		return
-	}
-	writeJSON(w, http.StatusCreated, map[string]any{"ok": true})
-}
-
-func (s *Server) handleAPIAddForm(w http.ResponseWriter, r *http.Request) {
-	if err := r.ParseForm(); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid form payload")
-		return
-	}
-	magnet := strings.TrimSpace(r.Form.Get("magnet"))
-	if magnet == "" {
-		writeError(w, http.StatusBadRequest, "magnet is required")
-		return
-	}
-	if err := s.svc.AddMagnet(r.Context(), magnet); err != nil {
-		writeError(w, http.StatusBadGateway, err.Error())
-		return
-	}
-	writeJSON(w, http.StatusCreated, map[string]any{"ok": true})
-}
-
-func (s *Server) handleAPIAddMultipart(w http.ResponseWriter, r *http.Request) {
-	if err := r.ParseMultipartForm(maxTorrentUploadBytes); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid multipart payload")
-		return
-	}
-
-	magnet := strings.TrimSpace(r.FormValue("magnet"))
-	if magnet != "" {
-		if err := s.svc.AddMagnet(r.Context(), magnet); err != nil {
-			writeError(w, http.StatusBadGateway, err.Error())
-			return
-		}
-		writeJSON(w, http.StatusCreated, map[string]any{"ok": true})
-		return
-	}
-
-	file, hdr, err := r.FormFile("torrent")
-	if err != nil {
-		if errors.Is(err, http.ErrMissingFile) {
-			writeError(w, http.StatusBadRequest, "either magnet or torrent file is required")
-			return
-		}
-		writeError(w, http.StatusBadRequest, "invalid torrent file")
-		return
-	}
-	defer file.Close()
-
-	data, err := io.ReadAll(io.LimitReader(file, maxTorrentUploadBytes+1))
-	if err != nil {
-		writeError(w, http.StatusBadRequest, "failed to read torrent file")
-		return
-	}
-	if len(data) == 0 {
-		writeError(w, http.StatusBadRequest, "torrent file is empty")
-		return
-	}
-	if len(data) > maxTorrentUploadBytes {
-		writeError(w, http.StatusRequestEntityTooLarge, "torrent file is too large")
-		return
-	}
-	if err := s.svc.AddTorrent(r.Context(), data, hdr.Filename); err != nil {
-		writeError(w, http.StatusBadGateway, err.Error())
-		return
-	}
-	writeJSON(w, http.StatusCreated, map[string]any{"ok": true})
-}
-
 func (s *Server) writeLiveUpdate(w io.Writer, flusher http.Flusher, ctx context.Context, params viewParams) error {
 	view, err := s.buildDashboardView(ctx, params)
 	if err != nil {
@@ -653,19 +421,14 @@ func (s *Server) buildDashboardView(ctx context.Context, params viewParams) (das
 
 	for _, item := range filtered {
 		state := normalizeState(item.State)
-		toggleAction := "start"
-		toggleLabel := "Start"
-		if state == "downloading" || state == "seeding" {
-			toggleAction = "stop"
-			toggleLabel = "Stop"
-		}
-
 		progress := clampProgress(item.Progress)
 		rows = append(rows, torrentRow{
 			Hash:          item.Hash,
 			Name:          torrentDisplayName(item),
 			State:         state,
 			StateClass:    state,
+			Running:       state == "downloading" || state == "seeding",
+			Active:        params.Selected != "" && item.Hash == params.Selected,
 			AddedAt:       formatAdded(item.AddedAt),
 			ProgressPct:   int(math.Round(progress * 100)),
 			ProgressValue: strconv.FormatFloat(progress, 'f', 4, 64),
@@ -676,8 +439,6 @@ func (s *Server) buildDashboardView(ctx context.Context, params viewParams) (das
 			DownRate:      formatRate(item.DownRate),
 			UpRate:        formatRate(item.UpRate),
 			Size:          fmt.Sprintf("%s / %s", formatBytes(item.DoneBytes), formatBytes(item.SizeBytes)),
-			ToggleAction:  toggleAction,
-			ToggleLabel:   toggleLabel,
 		})
 		downTotal += item.DownRate
 		upTotal += item.UpRate
@@ -806,6 +567,9 @@ func parseViewParams(values url.Values) viewParams {
 	if v := strings.TrimSpace(values.Get("dir")); v == "asc" || v == "desc" {
 		params.Dir = v
 	}
+	if v := strings.TrimSpace(values.Get("selected")); v != "" {
+		params.Selected = v
+	}
 	return params
 }
 
@@ -844,6 +608,9 @@ func streamURLForParams(params viewParams) string {
 	}
 	if params.Dir != "" {
 		values.Set("dir", params.Dir)
+	}
+	if params.Selected != "" {
+		values.Set("selected", params.Selected)
 	}
 	encoded := values.Encode()
 	if encoded == "" {
@@ -967,23 +734,6 @@ func writeSSEHTML(w io.Writer, flusher http.Flusher, event, html string) error {
 		}
 	}
 	if _, err := io.WriteString(w, "\n"); err != nil {
-		return err
-	}
-	flusher.Flush()
-	return nil
-}
-
-func writeSSEJSON(w io.Writer, flusher http.Flusher, event string, payload map[string]any) error {
-	data, err := json.Marshal(payload)
-	if err != nil {
-		return err
-	}
-	if event != "" {
-		if _, err := fmt.Fprintf(w, "event: %s\n", event); err != nil {
-			return err
-		}
-	}
-	if _, err := fmt.Fprintf(w, "data: %s\n\n", data); err != nil {
 		return err
 	}
 	flusher.Flush()

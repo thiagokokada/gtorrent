@@ -92,8 +92,11 @@ func TestDashboardEndpointRendersTorrentRows(t *testing.T) {
 	if !strings.Contains(body, "Ubuntu ISO") {
 		t.Fatalf("expected torrent row, body=%s", body)
 	}
-	if !strings.Contains(body, "hx-post=\"/ui/torrents/abc/stop\"") {
-		t.Fatalf("expected stop action, body=%s", body)
+	if !strings.Contains(body, "id=\"toggle-selected\"") {
+		t.Fatalf("expected top-bar action buttons, body=%s", body)
+	}
+	if !strings.Contains(body, "data-hash=\"abc\"") || !strings.Contains(body, "data-running=\"1\"") {
+		t.Fatalf("expected selectable running row, body=%s", body)
 	}
 }
 
@@ -207,7 +210,7 @@ func TestUIStreamEndpoint(t *testing.T) {
 	}
 }
 
-func TestAPIListEndpointAvailable(t *testing.T) {
+func TestAPIRoutesRemoved(t *testing.T) {
 	s, err := New(&mockService{
 		listFn: func(context.Context) ([]domain.Torrent, error) {
 			return []domain.Torrent{{Hash: "abc"}}, nil
@@ -221,10 +224,7 @@ func TestAPIListEndpointAvailable(t *testing.T) {
 	rr := httptest.NewRecorder()
 	s.Handler().ServeHTTP(rr, req)
 
-	if rr.Code != http.StatusOK {
+	if rr.Code != http.StatusNotFound {
 		t.Fatalf("status = %d, body=%s", rr.Code, rr.Body.String())
-	}
-	if !strings.Contains(rr.Body.String(), "\"hash\":\"abc\"") {
-		t.Fatalf("expected torrent payload, body=%s", rr.Body.String())
 	}
 }

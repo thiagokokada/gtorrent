@@ -1,161 +1,159 @@
 {{define "dashboard"}}
 <section id="dashboard" class="dashboard" hx-ext="sse" sse-connect="{{.StreamURL}}">
-  <header class="toolbar">
-    <form id="view-form" class="view-form"
-      hx-get="/ui/dashboard"
-      hx-target="#dashboard"
-      hx-swap="outerHTML"
-      hx-trigger="submit, change delay:100ms from:select, input changed delay:350ms from:input[name='q']">
-      <label>
-        <span>Search</span>
-        <input type="search" name="q" value="{{.Params.Query}}" placeholder="Name or hash">
-      </label>
-      <label>
-        <span>Filter</span>
-        <select name="filter">
-          <option value="all" {{if eq .Params.Filter "all"}}selected{{end}}>All</option>
-          <option value="downloading" {{if eq .Params.Filter "downloading"}}selected{{end}}>Downloading</option>
-          <option value="seeding" {{if eq .Params.Filter "seeding"}}selected{{end}}>Seeding</option>
-          <option value="complete" {{if eq .Params.Filter "complete"}}selected{{end}}>Complete</option>
-          <option value="stopped" {{if eq .Params.Filter "stopped"}}selected{{end}}>Stopped</option>
-          <option value="unknown" {{if eq .Params.Filter "unknown"}}selected{{end}}>Unknown</option>
-        </select>
-      </label>
-      <label>
-        <span>Sort</span>
-        <select name="sort">
-          <option value="addedAt" {{if eq .Params.Sort "addedAt"}}selected{{end}}>Added</option>
-          <option value="name" {{if eq .Params.Sort "name"}}selected{{end}}>Name</option>
-          <option value="state" {{if eq .Params.Sort "state"}}selected{{end}}>State</option>
-          <option value="progress" {{if eq .Params.Sort "progress"}}selected{{end}}>Done</option>
-          <option value="etaSeconds" {{if eq .Params.Sort "etaSeconds"}}selected{{end}}>ETA</option>
-          <option value="ratio" {{if eq .Params.Sort "ratio"}}selected{{end}}>Ratio</option>
-          <option value="peers" {{if eq .Params.Sort "peers"}}selected{{end}}>Peers</option>
-          <option value="seeds" {{if eq .Params.Sort "seeds"}}selected{{end}}>Seeds</option>
-          <option value="downRate" {{if eq .Params.Sort "downRate"}}selected{{end}}>Down</option>
-          <option value="upRate" {{if eq .Params.Sort "upRate"}}selected{{end}}>Up</option>
-          <option value="sizeBytes" {{if eq .Params.Sort "sizeBytes"}}selected{{end}}>Size</option>
-        </select>
-      </label>
-      <label>
-        <span>Direction</span>
-        <select name="dir">
-          <option value="desc" {{if eq .Params.Dir "desc"}}selected{{end}}>Desc</option>
-          <option value="asc" {{if eq .Params.Dir "asc"}}selected{{end}}>Asc</option>
-        </select>
-      </label>
-      <button type="submit" class="refresh">Refresh</button>
-    </form>
+  <form id="view-state" hidden>
+    <input type="hidden" name="q" value="{{.Params.Query}}">
+    <input type="hidden" name="filter" id="filter-input" value="{{.Params.Filter}}">
+    <input type="hidden" name="sort" id="sort-input" value="{{.Params.Sort}}">
+    <input type="hidden" name="dir" id="dir-input" value="{{.Params.Dir}}">
+    <input type="hidden" name="selected" id="selected-input" value="{{.Params.Selected}}">
+  </form>
 
-    <form class="add-form" enctype="multipart/form-data"
+  <header class="topbar">
+    <div class="brand-wrap">
+      <div id="connection-dot" class="brand-dot connecting"></div>
+      <div>
+        <h1>gTorrent</h1>
+        <p>rTorrent Remote Client</p>
+      </div>
+    </div>
+    <div class="topbar-right">
+      {{template "stats" .}}
+    </div>
+  </header>
+
+  <section class="controls card">
+    <div class="controls-section">
+      <div class="section-label">Actions</div>
+      <div class="action-row">
+        <button type="button" id="open-add" class="primary">Add</button>
+        <button type="button" id="toggle-selected" class="secondary" disabled
+          hx-target="#dashboard"
+          hx-swap="outerHTML"
+          hx-include="#view-state">Start</button>
+        <button type="button" id="recheck-selected" class="secondary" disabled
+          hx-target="#dashboard"
+          hx-swap="outerHTML"
+          hx-include="#view-state">Recheck</button>
+        <button type="button" id="remove-selected" class="danger" disabled
+          hx-target="#dashboard"
+          hx-swap="outerHTML"
+          hx-include="#view-state"
+          hx-confirm="Remove selected torrent?">Remove</button>
+        <button type="button" id="refresh" class="secondary"
+          hx-get="/ui/dashboard"
+          hx-target="#dashboard"
+          hx-swap="outerHTML"
+          hx-include="#view-state">Refresh</button>
+      </div>
+    </div>
+    <div class="controls-divider"></div>
+    <div class="controls-section">
+      <div class="section-label">Filter View</div>
+      <div class="filter-row" id="filters">
+        <button type="button" data-filter="all" class="{{if eq .Params.Filter "all"}}active{{end}}">All</button>
+        <button type="button" data-filter="downloading" class="{{if eq .Params.Filter "downloading"}}active{{end}}">Downloading</button>
+        <button type="button" data-filter="seeding" class="{{if eq .Params.Filter "seeding"}}active{{end}}">Seeding</button>
+        <button type="button" data-filter="complete" class="{{if eq .Params.Filter "complete"}}active{{end}}">Complete</button>
+        <button type="button" data-filter="stopped" class="{{if eq .Params.Filter "stopped"}}active{{end}}">Stopped</button>
+      </div>
+    </div>
+  </section>
+
+  <div id="form-message" class="message status-message {{if not .Flash.Message}}is-hidden{{end}} {{if .Flash.Message}}message-{{.Flash.Kind}}{{end}}" role="status" aria-live="polite">
+    <span id="form-message-text">{{.Flash.Message}}</span>
+    <button type="button" id="form-message-close" class="message-close" aria-label="Dismiss message">x</button>
+  </div>
+
+  <section class="table-panel card">
+    <div class="table-wrap">
+      <table id="torrent-table">
+        <colgroup>
+          <col data-col="name">
+          <col data-col="state">
+          <col data-col="addedAt">
+          <col data-col="progress">
+          <col data-col="etaSeconds">
+          <col data-col="ratio">
+          <col data-col="peers">
+          <col data-col="seeds">
+          <col data-col="downRate">
+          <col data-col="upRate">
+          <col data-col="sizeBytes">
+        </colgroup>
+        <thead>
+          <tr>
+            <th data-col="name"><button type="button" class="sort-btn" data-sort="name">Name{{if eq .Params.Sort "name"}} {{if eq .Params.Dir "asc"}}▲{{else}}▼{{end}}{{end}}</button></th>
+            <th data-col="state"><button type="button" class="sort-btn" data-sort="state">State{{if eq .Params.Sort "state"}} {{if eq .Params.Dir "asc"}}▲{{else}}▼{{end}}{{end}}</button></th>
+            <th data-col="addedAt"><button type="button" class="sort-btn" data-sort="addedAt">Added{{if eq .Params.Sort "addedAt"}} {{if eq .Params.Dir "asc"}}▲{{else}}▼{{end}}{{end}}</button></th>
+            <th data-col="progress"><button type="button" class="sort-btn" data-sort="progress">Done{{if eq .Params.Sort "progress"}} {{if eq .Params.Dir "asc"}}▲{{else}}▼{{end}}{{end}}</button></th>
+            <th data-col="etaSeconds"><button type="button" class="sort-btn" data-sort="etaSeconds">ETA{{if eq .Params.Sort "etaSeconds"}} {{if eq .Params.Dir "asc"}}▲{{else}}▼{{end}}{{end}}</button></th>
+            <th data-col="ratio"><button type="button" class="sort-btn" data-sort="ratio">Ratio{{if eq .Params.Sort "ratio"}} {{if eq .Params.Dir "asc"}}▲{{else}}▼{{end}}{{end}}</button></th>
+            <th data-col="peers"><button type="button" class="sort-btn" data-sort="peers">Peers{{if eq .Params.Sort "peers"}} {{if eq .Params.Dir "asc"}}▲{{else}}▼{{end}}{{end}}</button></th>
+            <th data-col="seeds"><button type="button" class="sort-btn" data-sort="seeds">Seeds{{if eq .Params.Sort "seeds"}} {{if eq .Params.Dir "asc"}}▲{{else}}▼{{end}}{{end}}</button></th>
+            <th data-col="downRate"><button type="button" class="sort-btn" data-sort="downRate">Down{{if eq .Params.Sort "downRate"}} {{if eq .Params.Dir "asc"}}▲{{else}}▼{{end}}{{end}}</button></th>
+            <th data-col="upRate"><button type="button" class="sort-btn" data-sort="upRate">Up{{if eq .Params.Sort "upRate"}} {{if eq .Params.Dir "asc"}}▲{{else}}▼{{end}}{{end}}</button></th>
+            <th data-col="sizeBytes"><button type="button" class="sort-btn" data-sort="sizeBytes">Size{{if eq .Params.Sort "sizeBytes"}} {{if eq .Params.Dir "asc"}}▲{{else}}▼{{end}}{{end}}</button></th>
+          </tr>
+        </thead>
+        {{template "table" .}}
+      </table>
+    </div>
+  </section>
+
+  <dialog id="add-dialog" class="add-dialog">
+    <form id="add-form" class="add-form" method="post"
       hx-post="/ui/torrents"
       hx-target="#dashboard"
       hx-swap="outerHTML"
-      hx-include="#view-form">
-      <label>
+      hx-encoding="multipart/form-data"
+      hx-include="#view-state">
+      <h2>Add Torrent</h2>
+      <label class="field" for="magnet">
         <span>Magnet</span>
-        <input type="url" name="magnet" placeholder="magnet:?xt=urn:btih:...">
+        <input type="url" id="magnet" name="magnet" placeholder="magnet:?xt=urn:btih:...">
       </label>
-      <label>
+      <label class="field" for="torrent">
         <span>.torrent</span>
-        <input type="file" name="torrent" accept=".torrent,application/x-bittorrent">
+        <input type="file" id="torrent" name="torrent" accept=".torrent,application/x-bittorrent">
       </label>
-      <button type="submit">Add</button>
+      <div class="dialog-actions">
+        <button type="button" id="cancel-add" class="secondary">Cancel</button>
+        <button type="submit" id="add-btn" class="primary">Add</button>
+      </div>
     </form>
-  </header>
-
-  {{template "flash" .}}
-  {{template "stats" .}}
-  {{template "table" .}}
+  </dialog>
 </section>
 {{end}}
 
-{{define "flash"}}
-<div id="flash-region" class="flash-region">
-  {{if .Flash.Message}}
-  <article class="flash flash-{{.Flash.Kind}}">{{.Flash.Message}}</article>
-  {{end}}
-</div>
-{{end}}
-
 {{define "stats"}}
-<div id="stats-region" class="stats" sse-swap="stats" hx-swap="outerHTML">
-  <span><strong>{{.VisibleCount}}</strong> torrents</span>
-  <span>Down <strong>{{.TotalDownRate}}</strong></span>
-  <span>Up <strong>{{.TotalUpRate}}</strong></span>
-</div>
+<div id="global-stats" class="global-stats" sse-swap="stats" hx-swap="outerHTML">{{.VisibleCount}} torrents | ↓ {{.TotalDownRate}} | ↑ {{.TotalUpRate}}</div>
 {{end}}
 
 {{define "table"}}
-<div id="table-region" class="table-wrap" sse-swap="table" hx-swap="outerHTML">
-  <table role="grid">
-    <thead>
-      <tr>
-        <th>Name</th>
-        <th>State</th>
-        <th>Added</th>
-        <th>Done</th>
-        <th>ETA</th>
-        <th>Ratio</th>
-        <th>Peers</th>
-        <th>Seeds</th>
-        <th>Down</th>
-        <th>Up</th>
-        <th>Size</th>
-        <th>Actions</th>
+<tbody id="torrents-body" sse-swap="table" hx-swap="outerHTML">
+  {{if .Torrents}}
+    {{range .Torrents}}
+      <tr data-hash="{{.Hash}}" data-running="{{if .Running}}1{{else}}0{{end}}" class="{{if .Active}}active{{end}}">
+        <td class="name">{{.Name}}</td>
+        <td><span class="state {{.StateClass}}">{{.State}}</span></td>
+        <td class="added">{{.AddedAt}}</td>
+        <td>
+          <div class="progress-wrap">
+            <progress class="progress" max="1" value="{{.ProgressValue}}"></progress>
+            <span class="percent">{{.ProgressPct}}%</span>
+          </div>
+        </td>
+        <td class="eta">{{.ETA}}</td>
+        <td class="ratio">{{.Ratio}}</td>
+        <td class="peers">{{.Peers}}</td>
+        <td class="seeds">{{.Seeds}}</td>
+        <td class="down">{{.DownRate}}</td>
+        <td class="up">{{.UpRate}}</td>
+        <td class="size">{{.Size}}</td>
       </tr>
-    </thead>
-    <tbody>
-      {{if .Torrents}}
-        {{range .Torrents}}
-          <tr>
-            <td class="name" title="{{.Hash}}">{{.Name}}</td>
-            <td><span class="state {{.StateClass}}">{{.State}}</span></td>
-            <td>{{.AddedAt}}</td>
-            <td>
-              <div class="progress-wrap">
-                <progress value="{{.ProgressValue}}" max="1"></progress>
-                <span>{{.ProgressPct}}%</span>
-              </div>
-            </td>
-            <td>{{.ETA}}</td>
-            <td>{{.Ratio}}</td>
-            <td>{{.Peers}}</td>
-            <td>{{.Seeds}}</td>
-            <td>{{.DownRate}}</td>
-            <td>{{.UpRate}}</td>
-            <td>{{.Size}}</td>
-            <td>
-              <div class="row-actions">
-                <form hx-post="/ui/torrents/{{.Hash}}/{{.ToggleAction}}"
-                  hx-target="#dashboard"
-                  hx-swap="outerHTML"
-                  hx-include="#view-form">
-                  <button type="submit">{{.ToggleLabel}}</button>
-                </form>
-                <form hx-post="/ui/torrents/{{.Hash}}/recheck"
-                  hx-target="#dashboard"
-                  hx-swap="outerHTML"
-                  hx-include="#view-form">
-                  <button type="submit" class="secondary">Recheck</button>
-                </form>
-                <form hx-post="/ui/torrents/{{.Hash}}/remove"
-                  hx-target="#dashboard"
-                  hx-swap="outerHTML"
-                  hx-include="#view-form"
-                  hx-confirm="Remove {{.Name}}?">
-                  <button type="submit" class="danger">Remove</button>
-                </form>
-              </div>
-            </td>
-          </tr>
-        {{end}}
-      {{else}}
-        <tr>
-          <td colspan="12" class="placeholder">No torrents in this view</td>
-        </tr>
-      {{end}}
-    </tbody>
-  </table>
-</div>
+    {{end}}
+  {{else}}
+    <tr><td colspan="11" class="placeholder">No torrents in this view</td></tr>
+  {{end}}
+</tbody>
 {{end}}
