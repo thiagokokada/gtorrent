@@ -73,6 +73,7 @@ type viewParams struct {
 type flashMessage struct {
 	Kind          string
 	Message       string
+	OpenAddDialog bool
 	AddFormError  string
 	AddFormMagnet string
 }
@@ -128,28 +129,30 @@ type dashboardFragments struct {
 	ViewState bool
 	Stats     bool
 	Controls  bool
+	AddDialog bool
 	Status    bool
 	FileList  bool
 }
 
 var (
 	// Fragment presets for HTMX responses. Keep these aligned with AGENTS.md "UI Fragment Contract".
-	// - Add validation errors: controls
+	// - Add validation errors: add dialog
 	// - Speed limits: controls + status
 	// - Torrent actions and view navigation: all
 	fragmentsAll = dashboardFragments{
 		ViewState: true,
 		Stats:     true,
 		Controls:  true,
+		AddDialog: true,
 		Status:    true,
 		FileList:  true,
 	}
-	fragmentsControlsOnly = dashboardFragments{
-		Controls:  true,
+	fragmentsAddDialogOnly = dashboardFragments{
+		AddDialog: true,
 	}
 	fragmentsControlsAndStatus = dashboardFragments{
-		Controls:  true,
-		Status:    true,
+		Controls: true,
+		Status:   true,
 	}
 )
 
@@ -237,10 +240,15 @@ func (s *Server) handleUIDashboard(w http.ResponseWriter, r *http.Request) {
 
 	params := parseViewParams(r.URL.Query())
 	fragments := fragmentsAll
-	if strings.TrimSpace(r.Header.Get("HX-Trigger")) == "cancel-add" {
-		fragments = fragmentsControlsOnly
+	flash := flashMessage{}
+	switch strings.TrimSpace(r.Header.Get("HX-Trigger")) {
+	case "cancel-add":
+		fragments = fragmentsAddDialogOnly
+	case "open-add":
+		fragments = fragmentsAddDialogOnly
+		flash.OpenAddDialog = true
 	}
-	s.renderDashboardResponse(w, r, r.Context(), params, flashMessage{}, fragments)
+	s.renderDashboardResponse(w, r, r.Context(), params, flash, fragments)
 }
 
 func (s *Server) handleUIAddTorrent(w http.ResponseWriter, r *http.Request) {
@@ -250,7 +258,7 @@ func (s *Server) handleUIAddTorrent(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := r.ParseMultipartForm(maxTorrentUploadBytes); err != nil {
-		s.renderDashboardResponse(w, r, r.Context(), defaultViewParams(), flashMessage{AddFormError: "invalid multipart payload"}, fragmentsControlsOnly)
+		s.renderDashboardResponse(w, r, r.Context(), defaultViewParams(), flashMessage{AddFormError: "invalid multipart payload"}, fragmentsAddDialogOnly)
 		return
 	}
 
@@ -259,7 +267,7 @@ func (s *Server) handleUIAddTorrent(w http.ResponseWriter, r *http.Request) {
 
 	if magnet != "" {
 		if err := s.svc.AddMagnet(r.Context(), magnet); err != nil {
-			s.renderDashboardResponse(w, r, r.Context(), params, flashMessage{AddFormError: err.Error(), AddFormMagnet: magnet}, fragmentsControlsOnly)
+			s.renderDashboardResponse(w, r, r.Context(), params, flashMessage{AddFormError: err.Error(), AddFormMagnet: magnet}, fragmentsAddDialogOnly)
 			return
 		}
 		s.renderDashboardResponse(w, r, r.Context(), params, flashMessage{Kind: "ok", Message: "Torrent added"}, fragmentsAll)
@@ -269,30 +277,30 @@ func (s *Server) handleUIAddTorrent(w http.ResponseWriter, r *http.Request) {
 	file, hdr, err := r.FormFile("torrent")
 	if err != nil {
 		if errors.Is(err, http.ErrMissingFile) {
-			s.renderDashboardResponse(w, r, r.Context(), params, flashMessage{AddFormError: "provide a magnet link or a .torrent file"}, fragmentsControlsOnly)
+			s.renderDashboardResponse(w, r, r.Context(), params, flashMessage{AddFormError: "provide a magnet link or a .torrent file"}, fragmentsAddDialogOnly)
 			return
 		}
-		s.renderDashboardResponse(w, r, r.Context(), params, flashMessage{AddFormError: "invalid torrent file"}, fragmentsControlsOnly)
+		s.renderDashboardResponse(w, r, r.Context(), params, flashMessage{AddFormError: "invalid torrent file"}, fragmentsAddDialogOnly)
 		return
 	}
 	defer file.Close()
 
 	data, err := io.ReadAll(io.LimitReader(file, maxTorrentUploadBytes+1))
 	if err != nil {
-		s.renderDashboardResponse(w, r, r.Context(), params, flashMessage{AddFormError: "failed to read torrent file"}, fragmentsControlsOnly)
+		s.renderDashboardResponse(w, r, r.Context(), params, flashMessage{AddFormError: "failed to read torrent file"}, fragmentsAddDialogOnly)
 		return
 	}
 	if len(data) == 0 {
-		s.renderDashboardResponse(w, r, r.Context(), params, flashMessage{AddFormError: "torrent file is empty"}, fragmentsControlsOnly)
+		s.renderDashboardResponse(w, r, r.Context(), params, flashMessage{AddFormError: "torrent file is empty"}, fragmentsAddDialogOnly)
 		return
 	}
 	if len(data) > maxTorrentUploadBytes {
-		s.renderDashboardResponse(w, r, r.Context(), params, flashMessage{AddFormError: "torrent file is too large"}, fragmentsControlsOnly)
+		s.renderDashboardResponse(w, r, r.Context(), params, flashMessage{AddFormError: "torrent file is too large"}, fragmentsAddDialogOnly)
 		return
 	}
 
 	if err := s.svc.AddTorrent(r.Context(), data, hdr.Filename); err != nil {
-		s.renderDashboardResponse(w, r, r.Context(), params, flashMessage{AddFormError: err.Error()}, fragmentsControlsOnly)
+		s.renderDashboardResponse(w, r, r.Context(), params, flashMessage{AddFormError: err.Error()}, fragmentsAddDialogOnly)
 		return
 	}
 
@@ -598,6 +606,13 @@ func (s *Server) renderDashboardFragments(w http.ResponseWriter, ctx context.Con
 			return
 		}
 	}
+	if fragments.AddDialog {
+		if err := s.templates.ExecuteTemplate(&body, "add-dialog", view); err != nil {
+			slog.Error("render dashboard fragments failed", "fragment", "add-dialog", "error", err)
+			http.Error(w, "internal server error", http.StatusInternalServerError)
+			return
+		}
+	}
 	if fragments.Status {
 		if err := s.templates.ExecuteTemplate(&body, "status", view); err != nil {
 			slog.Error("render dashboard fragments failed", "fragment", "status", "error", err)
@@ -649,8 +664,10 @@ func (s *Server) dashboardViewWithFlash(ctx context.Context, params viewParams, 
 			view.StatusKind = "info"
 		}
 	}
-	if strings.TrimSpace(flash.AddFormError) != "" {
+	if flash.OpenAddDialog || strings.TrimSpace(flash.AddFormError) != "" {
 		view.OpenAddDialog = true
+	}
+	if strings.TrimSpace(flash.AddFormError) != "" {
 		view.AddFormError = strings.TrimSpace(flash.AddFormError)
 		view.AddFormMagnet = strings.TrimSpace(flash.AddFormMagnet)
 	}

@@ -251,6 +251,9 @@ func TestDashboardHTMXReturnsFragmentBundle(t *testing.T) {
 	if !strings.Contains(body, `id="controls-panel" class="controls card" hx-swap-oob="outerHTML"`) {
 		t.Fatalf("expected controls fragment oob swap, body=%s", body)
 	}
+	if !strings.Contains(body, `id="add-dialog" class="add-dialog" hx-swap-oob="outerHTML"`) {
+		t.Fatalf("expected add-dialog fragment oob swap, body=%s", body)
+	}
 	if !strings.Contains(body, `id="file-list" class="table-panel card" hx-swap-oob="outerHTML"`) {
 		t.Fatalf("expected file-list fragment oob swap, body=%s", body)
 	}
@@ -259,7 +262,7 @@ func TestDashboardHTMXReturnsFragmentBundle(t *testing.T) {
 	}
 }
 
-func TestDashboardCancelAddHTMXReturnsControlsOnly(t *testing.T) {
+func TestDashboardCancelAddHTMXReturnsAddDialogOnly(t *testing.T) {
 	s, err := New(&mockService{
 		listFn: func(context.Context) ([]domain.Torrent, error) {
 			return []domain.Torrent{{Hash: "abc", Name: "Ubuntu ISO", State: "downloading"}}, nil
@@ -283,11 +286,17 @@ func TestDashboardCancelAddHTMXReturnsControlsOnly(t *testing.T) {
 	if strings.Contains(body, `<section id="dashboard"`) {
 		t.Fatalf("did not expect full dashboard for htmx fragment request, body=%s", body)
 	}
-	if !strings.Contains(body, `id="controls-panel" class="controls card" hx-swap-oob="outerHTML"`) {
-		t.Fatalf("expected controls fragment oob swap, body=%s", body)
+	if !strings.Contains(body, `id="add-dialog" class="add-dialog" hx-swap-oob="outerHTML"`) {
+		t.Fatalf("expected add-dialog fragment oob swap, body=%s", body)
+	}
+	if strings.Contains(body, `id="add-dialog" class="add-dialog" open`) {
+		t.Fatalf("did not expect open add-dialog for cancel-add, body=%s", body)
 	}
 	if strings.Contains(body, `id="file-list" class="table-panel card"`) {
 		t.Fatalf("did not expect file-list fragment for cancel-add, body=%s", body)
+	}
+	if strings.Contains(body, `id="controls-panel" class="controls card"`) {
+		t.Fatalf("did not expect controls fragment for cancel-add, body=%s", body)
 	}
 	if strings.Contains(body, `id="form-message"`) {
 		t.Fatalf("did not expect status fragment for cancel-add, body=%s", body)
@@ -297,6 +306,50 @@ func TestDashboardCancelAddHTMXReturnsControlsOnly(t *testing.T) {
 	}
 	if strings.Contains(body, `id="view-state" hidden`) {
 		t.Fatalf("did not expect view-state fragment for cancel-add, body=%s", body)
+	}
+}
+
+func TestDashboardOpenAddHTMXReturnsOpenAddDialogOnly(t *testing.T) {
+	s, err := New(&mockService{
+		listFn: func(context.Context) ([]domain.Torrent, error) {
+			return []domain.Torrent{{Hash: "abc", Name: "Ubuntu ISO", State: "downloading"}}, nil
+		},
+	})
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/ui/dashboard?selected=abc", nil)
+	req.Header.Set("HX-Request", "true")
+	req.Header.Set("HX-Target", "open-add")
+	req.Header.Set("HX-Trigger", "open-add")
+	rr := httptest.NewRecorder()
+	s.Handler().ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d, body=%s", rr.Code, rr.Body.String())
+	}
+	body := rr.Body.String()
+	if strings.Contains(body, `<section id="dashboard"`) {
+		t.Fatalf("did not expect full dashboard for htmx fragment request, body=%s", body)
+	}
+	if !strings.Contains(body, `id="add-dialog" class="add-dialog" open hx-swap-oob="outerHTML"`) {
+		t.Fatalf("expected open add-dialog fragment oob swap, body=%s", body)
+	}
+	if strings.Contains(body, `id="file-list" class="table-panel card"`) {
+		t.Fatalf("did not expect file-list fragment for open-add, body=%s", body)
+	}
+	if strings.Contains(body, `id="controls-panel" class="controls card"`) {
+		t.Fatalf("did not expect controls fragment for open-add, body=%s", body)
+	}
+	if strings.Contains(body, `id="form-message"`) {
+		t.Fatalf("did not expect status fragment for open-add, body=%s", body)
+	}
+	if strings.Contains(body, `id="global-stats" class="global-stats"`) {
+		t.Fatalf("did not expect stats fragment for open-add, body=%s", body)
+	}
+	if strings.Contains(body, `id="view-state" hidden`) {
+		t.Fatalf("did not expect view-state fragment for open-add, body=%s", body)
 	}
 }
 
@@ -428,8 +481,8 @@ func TestAddTorrentRequiresMagnetOrFile(t *testing.T) {
 	if !strings.Contains(responseBody, `class="add-form-error"`) {
 		t.Fatalf("expected inline add form error, body=%s", responseBody)
 	}
-	if !strings.Contains(responseBody, `<dialog id="add-dialog" class="add-dialog" data-open-on-load="true">`) {
-		t.Fatalf("expected add dialog to request modal reopen, body=%s", responseBody)
+	if !strings.Contains(responseBody, `<dialog id="add-dialog" class="add-dialog" open>`) {
+		t.Fatalf("expected add dialog to be open for validation error, body=%s", responseBody)
 	}
 	if strings.Contains(responseBody, `<span id="form-message-text">provide a magnet link or a .torrent file</span>`) {
 		t.Fatalf("did not expect global status message for add form validation error, body=%s", responseBody)
@@ -480,11 +533,11 @@ func TestAddTorrentRequiresMagnetOrFileHTMXReturnsFragments(t *testing.T) {
 	if !strings.Contains(responseBody, `class="add-form-error"`) {
 		t.Fatalf("expected inline add form error, body=%s", responseBody)
 	}
-	if !strings.Contains(responseBody, `<dialog id="add-dialog" class="add-dialog" data-open-on-load="true">`) {
-		t.Fatalf("expected add dialog to request modal reopen, body=%s", responseBody)
+	if !strings.Contains(responseBody, `id="add-dialog" class="add-dialog" open hx-swap-oob="outerHTML"`) {
+		t.Fatalf("expected add-dialog fragment oob swap with open state, body=%s", responseBody)
 	}
-	if !strings.Contains(responseBody, `id="controls-panel" class="controls card" hx-swap-oob="outerHTML"`) {
-		t.Fatalf("expected controls fragment oob swap, body=%s", responseBody)
+	if strings.Contains(responseBody, `id="controls-panel" class="controls card"`) {
+		t.Fatalf("did not expect controls fragment for add-form validation response, body=%s", responseBody)
 	}
 	if strings.Contains(responseBody, `id="form-message"`) {
 		t.Fatalf("did not expect status fragment for add-form validation response, body=%s", responseBody)
@@ -528,8 +581,8 @@ func TestAddTorrentMagnetErrorShowsInlineFormError(t *testing.T) {
 	if !strings.Contains(responseBody, `class="add-form-error"`) {
 		t.Fatalf("expected inline add form error, body=%s", responseBody)
 	}
-	if !strings.Contains(responseBody, `<dialog id="add-dialog" class="add-dialog" data-open-on-load="true">`) {
-		t.Fatalf("expected add dialog to request modal reopen, body=%s", responseBody)
+	if !strings.Contains(responseBody, `<dialog id="add-dialog" class="add-dialog" open>`) {
+		t.Fatalf("expected add dialog to be open for validation error, body=%s", responseBody)
 	}
 	if !strings.Contains(responseBody, `name="magnet" placeholder="magnet:?xt=urn:btih:..." value="magnet:?xt=urn:btih:invalid"`) {
 		t.Fatalf("expected magnet field value to be preserved, body=%s", responseBody)

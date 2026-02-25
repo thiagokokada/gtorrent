@@ -16,6 +16,7 @@
   </header>
 
   {{template "controls" .}}
+  {{template "add-dialog" .}}
   {{template "status" .}}
   {{template "file-list" .}}
 </section>
@@ -25,6 +26,7 @@
 {{template "view-state" .}}
 {{template "stats" .}}
 {{template "controls" .}}
+{{template "add-dialog" .}}
 {{template "status" .}}
 {{template "file-list" .}}
 {{end}}
@@ -44,7 +46,10 @@
   <div class="controls-section">
     <div class="section-label">Actions</div>
     <div class="action-row">
-      <button type="button" id="open-add" class="primary" onclick="document.getElementById('add-dialog').showModal()">Add</button>
+      <button type="button" id="open-add" class="primary"
+        hx-get="{{.DashboardURL}}"
+        hx-swap="none"
+        hx-include="#view-state">Add</button>
       {{if .HasSelected}}
       <button type="button" id="toggle-selected" class="secondary"
         hx-post="/ui/torrents/{{urlquery .SelectedHash}}/{{if .SelectedRunning}}stop{{else}}start{{end}}"
@@ -108,34 +113,36 @@
       <button type="submit" class="secondary">Apply</button>
     </form>
   </div>
-
-  <dialog id="add-dialog" class="add-dialog"{{if .OpenAddDialog}} data-open-on-load="true"{{end}}>
-    <form id="add-form" class="add-form" method="post"
-      hx-post="/ui/torrents"
-      hx-swap="none"
-      hx-encoding="multipart/form-data"
-      hx-include="#view-state">
-      <h2>Add Torrent</h2>
-      {{if .AddFormError}}
-      <p class="add-form-error" role="alert">{{.AddFormError}}</p>
-      {{end}}
-      <label class="field" for="magnet">
-        <span>Magnet</span>
-        <input type="url" id="magnet" name="magnet" placeholder="magnet:?xt=urn:btih:..." value="{{.AddFormMagnet}}">
-      </label>
-      <label class="field" for="torrent">
-        <span>.torrent</span>
-        <input type="file" id="torrent" name="torrent" accept=".torrent,application/x-bittorrent">
-      </label>
-      <div class="dialog-actions">
-        <button type="button" id="cancel-add" class="secondary"
-          hx-get="{{.DashboardURL}}"
-          hx-swap="none">Cancel</button>
-        <button type="submit" id="add-btn" class="primary">Add</button>
-      </div>
-    </form>
-  </dialog>
 </section>
+{{end}}
+
+{{define "add-dialog"}}
+<dialog id="add-dialog" class="add-dialog"{{if .OpenAddDialog}} open{{end}}{{if .SwapOOB}} hx-swap-oob="outerHTML"{{end}}>
+  <form id="add-form" class="add-form" method="post"
+    hx-post="/ui/torrents"
+    hx-swap="none"
+    hx-encoding="multipart/form-data"
+    hx-include="#view-state">
+    <h2>Add Torrent</h2>
+    {{if .AddFormError}}
+    <p class="add-form-error" role="alert">{{.AddFormError}}</p>
+    {{end}}
+    <label class="field" for="magnet">
+      <span>Magnet</span>
+      <input type="url" id="magnet" name="magnet" placeholder="magnet:?xt=urn:btih:..." value="{{.AddFormMagnet}}">
+    </label>
+    <label class="field" for="torrent">
+      <span>.torrent</span>
+      <input type="file" id="torrent" name="torrent" accept=".torrent,application/x-bittorrent">
+    </label>
+    <div class="dialog-actions">
+      <button type="button" id="cancel-add" class="secondary"
+        hx-get="{{.DashboardURL}}"
+        hx-swap="none">Cancel</button>
+      <button type="submit" id="add-btn" class="primary">Add</button>
+    </div>
+  </form>
+</dialog>
 {{end}}
 
 {{define "status"}}

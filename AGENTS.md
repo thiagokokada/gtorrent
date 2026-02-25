@@ -37,13 +37,16 @@ This file provides guidance for coding agents and contributors working in this r
 ## UI Fragment Contract
 
 - Keep UI fragment ownership explicit:
-  - `controls`: actions, filters/sort controls, speed-limit form, add dialog and add-form inline errors.
+  - `controls`: actions, filters/sort controls, speed-limit form.
+  - `add-dialog`: add dialog state, add-form inline errors, and add-form value preservation.
   - `status`: global notification area only.
   - `file-list`: torrent table/list only.
   - `stats`: global rate/count summary only.
   - `view-state`: hidden navigation/filter/sort/selection state inputs only.
 - For endpoint changes, preserve action-to-fragment boundaries:
-  - Add form validation errors should update `controls` only.
+  - Opening the add dialog should update `add-dialog` only.
+  - Add form validation errors should update `add-dialog` only.
+  - Add dialog cancel/reset should update `add-dialog` only.
   - Speed limit updates should update `controls` + `status`.
   - Torrent start/stop/recheck/remove should update `file-list` + `controls` + `status` (+ `stats` when totals may change).
   - Filter/sort/select/refresh should update `file-list` + `controls` (+ `stats` when totals may change).
