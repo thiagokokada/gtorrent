@@ -283,14 +283,20 @@ func TestDashboardHTMXReturnsFragmentBundle(t *testing.T) {
 	if !strings.Contains(body, `id="controls-panel" class="controls card" hx-swap-oob="outerHTML"`) {
 		t.Fatalf("expected controls fragment oob swap, body=%s", body)
 	}
-	if !strings.Contains(body, `id="add-dialog" class="add-dialog" hx-swap-oob="outerHTML"`) {
-		t.Fatalf("expected add-dialog fragment oob swap, body=%s", body)
-	}
 	if !strings.Contains(body, `id="file-list" class="table-panel card" hx-swap-oob="outerHTML"`) {
 		t.Fatalf("expected file-list fragment oob swap, body=%s", body)
 	}
-	if !strings.Contains(body, `id="form-message"`) || !strings.Contains(body, `hx-swap-oob="outerHTML"`) {
-		t.Fatalf("expected status fragment oob swap, body=%s", body)
+	if !strings.Contains(body, `id="view-state" hidden hx-swap-oob="outerHTML"`) {
+		t.Fatalf("expected view-state fragment oob swap, body=%s", body)
+	}
+	if !strings.Contains(body, `id="global-stats" class="global-stats"`) || !strings.Contains(body, `hx-swap-oob="outerHTML"`) {
+		t.Fatalf("expected stats fragment oob swap, body=%s", body)
+	}
+	if strings.Contains(body, `id="add-dialog" class="add-dialog"`) {
+		t.Fatalf("did not expect add-dialog fragment for view navigation, body=%s", body)
+	}
+	if strings.Contains(body, `id="form-message"`) {
+		t.Fatalf("did not expect status fragment for view navigation, body=%s", body)
 	}
 }
 

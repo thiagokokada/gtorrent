@@ -139,13 +139,20 @@ var (
 	// Fragment presets for HTMX responses. Keep these aligned with AGENTS.md "UI Fragment Contract".
 	// - Add validation errors: add dialog
 	// - Speed limits: controls + status
-	// - Torrent actions and view navigation: all
+	// - View navigation: file-list + controls + stats + view-state
+	// - Torrent actions: all
 	fragmentsAll = dashboardFragments{
 		ViewState: true,
 		Stats:     true,
 		Controls:  true,
 		AddDialog: true,
 		Status:    true,
+		FileList:  true,
+	}
+	fragmentsViewNavigation = dashboardFragments{
+		ViewState: true,
+		Stats:     true,
+		Controls:  true,
 		FileList:  true,
 	}
 	fragmentsAddDialogOnly = dashboardFragments{
@@ -240,7 +247,7 @@ func (s *Server) handleUIDashboard(w http.ResponseWriter, r *http.Request) {
 	}
 
 	params := parseViewParams(r.URL.Query())
-	fragments := fragmentsAll
+	fragments := fragmentsViewNavigation
 	flash := flashMessage{}
 	switch strings.TrimSpace(r.Header.Get("HX-Trigger")) {
 	case "cancel-add":
