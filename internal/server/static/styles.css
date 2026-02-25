@@ -149,14 +149,16 @@ body.col-resizing {
 
 .speed-limit-form {
   display: flex;
-  align-items: flex-end;
+  align-items: center;
   gap: 0.3rem;
   flex-wrap: wrap;
 }
 
 .speed-limit-field {
-  display: grid;
-  gap: 0.12rem;
+  display: flex;
+  align-items: center;
+  gap: 0.22rem;
+  min-height: 25px;
 }
 
 .speed-limit-field span {
