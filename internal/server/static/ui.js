@@ -73,50 +73,13 @@ function isDashboardTarget(target) {
   return Boolean(target?.closest?.("#dashboard"));
 }
 
-function readStorage(key) {
+function writeCookie(key, value) {
   try {
-    return window.localStorage.getItem(key);
+    const encodedValue = encodeURIComponent(value);
+    document.cookie = key + "=" + encodedValue + "; Path=/; Max-Age=31536000; SameSite=Lax";
   } catch (_) {
-    return null;
+    // Ignore persistence failures.
   }
-}
-
-function writeStorage(key, value) {
-  try {
-    window.localStorage.setItem(key, value);
-  } catch (_) {
-    // Ignore persistence failures (private mode, disabled storage, etc.)
-  }
-}
-
-function applyPersistedViewStateToInitialLoad() {
-  const initialDashboard = document.querySelector("main#dashboard[hx-get]");
-  if (!initialDashboard) {
-    return;
-  }
-
-  const baseURL = String(initialDashboard.getAttribute("hx-get") || "").trim();
-  if (baseURL === "") {
-    return;
-  }
-
-  const url = new URL(baseURL, window.location.origin);
-  const filter = String(readStorage(STORAGE_KEYS.filter) || "").trim();
-  const sort = String(readStorage(STORAGE_KEYS.sort) || "").trim();
-  const dir = String(readStorage(STORAGE_KEYS.dir) || "").trim();
-
-  if (FILTER_VALUES.includes(filter)) {
-    url.searchParams.set("filter", filter);
-  }
-  if (SORT_VALUES.includes(sort)) {
-    url.searchParams.set("sort", sort);
-  }
-  if (dir === "asc" || dir === "desc") {
-    url.searchParams.set("dir", dir);
-  }
-
-  const nextPath = url.pathname + (url.search || "");
-  initialDashboard.setAttribute("hx-get", nextPath);
 }
 
 function persistCurrentViewState() {
@@ -125,19 +88,17 @@ function persistCurrentViewState() {
   const dir = String(document.querySelector("#dir-input")?.value || "").trim();
 
   if (FILTER_VALUES.includes(filter)) {
-    writeStorage(STORAGE_KEYS.filter, filter);
+    writeCookie(STORAGE_KEYS.filter, filter);
   }
   if (SORT_VALUES.includes(sort)) {
-    writeStorage(STORAGE_KEYS.sort, sort);
+    writeCookie(STORAGE_KEYS.sort, sort);
   }
   if (dir === "asc" || dir === "desc") {
-    writeStorage(STORAGE_KEYS.dir, dir);
+    writeCookie(STORAGE_KEYS.dir, dir);
   }
 }
 
 function initDashboardUi() {
-  applyPersistedViewStateToInitialLoad();
-
   document.body.addEventListener("htmx:sseOpen", function (event) {
     if (isDashboardTarget(event.target)) {
       setConnectionState("online");

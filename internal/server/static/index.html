@@ -13,7 +13,7 @@
 <body>
   <main id="dashboard"
     class="app-shell"
-    hx-get="/ui/dashboard"
+    hx-get="{{.DashboardURL}}"
     hx-trigger="load"
     hx-swap="outerHTML">
     <section class="card" style="padding:0.7rem">Loading...</section>

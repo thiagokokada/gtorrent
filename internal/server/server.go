@@ -122,7 +122,8 @@ type dashboardView struct {
 }
 
 type indexView struct {
-	UIJSVersion string
+	UIJSVersion  string
+	DashboardURL string
 }
 
 type dashboardFragments struct {
@@ -216,7 +217,7 @@ func (s *Server) handleUIPage(w http.ResponseWriter, r *http.Request) {
 		writeMethodNotAllowed(w, http.MethodGet, http.MethodHead)
 		return
 	}
-	s.renderIndex(w)
+	s.renderIndex(w, r)
 }
 
 func (s *Server) handleUIEmpty(w http.ResponseWriter, r *http.Request) {
@@ -537,19 +538,87 @@ func (s *Server) handleStatic(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if r.URL.Path == "/" {
-		s.renderIndex(w)
+		s.renderIndex(w, r)
 		return
 	}
 	s.staticRoot.ServeHTTP(w, r)
 }
 
-func (s *Server) renderIndex(w http.ResponseWriter) {
+func (s *Server) renderIndex(w http.ResponseWriter, r *http.Request) {
+	params := parseInitialViewParams(r)
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-cache")
-	if err := s.indexTemplate.Execute(w, indexView{UIJSVersion: s.uiJSVersion}); err != nil {
+	if err := s.indexTemplate.Execute(w, indexView{
+		UIJSVersion:  s.uiJSVersion,
+		DashboardURL: dashboardURLForParams(params),
+	}); err != nil {
 		slog.Error("render index failed", "error", err)
 		http.Error(w, "internal server error", http.StatusInternalServerError)
 	}
+}
+
+const (
+	cookieFilter = "gtorrent.view.filter"
+	cookieSort   = "gtorrent.view.sort"
+	cookieDir    = "gtorrent.view.dir"
+)
+
+func parseInitialViewParams(r *http.Request) viewParams {
+	params := defaultViewParams()
+	if r == nil {
+		return params
+	}
+
+	cookieFilterValue := ""
+	cookieSortValue := ""
+	cookieDirValue := ""
+	queryFilterValue := strings.TrimSpace(r.URL.Query().Get("filter"))
+	querySortValue := strings.TrimSpace(r.URL.Query().Get("sort"))
+	queryDirValue := strings.TrimSpace(r.URL.Query().Get("dir"))
+
+	if cookie, err := r.Cookie(cookieFilter); err == nil {
+		cookieFilterValue = strings.TrimSpace(cookie.Value)
+		if isValidFilter(cookieFilterValue) {
+			params.Filter = cookieFilterValue
+		}
+	}
+	if cookie, err := r.Cookie(cookieSort); err == nil {
+		cookieSortValue = strings.TrimSpace(cookie.Value)
+		if isValidSort(cookieSortValue) {
+			params.Sort = cookieSortValue
+		}
+	}
+	if cookie, err := r.Cookie(cookieDir); err == nil {
+		cookieDirValue = strings.TrimSpace(cookie.Value)
+		if cookieDirValue == "asc" || cookieDirValue == "desc" {
+			params.Dir = cookieDirValue
+		}
+	}
+
+	if isValidFilter(queryFilterValue) {
+		params.Filter = queryFilterValue
+	}
+	if isValidSort(querySortValue) {
+		params.Sort = querySortValue
+	}
+	if queryDirValue == "asc" || queryDirValue == "desc" {
+		params.Dir = queryDirValue
+	}
+
+	slog.Debug("resolve initial ui view params",
+		"path", r.URL.Path,
+		"cookieFilter", cookieFilterValue,
+		"cookieSort", cookieSortValue,
+		"cookieDir", cookieDirValue,
+		"queryFilter", queryFilterValue,
+		"querySort", querySortValue,
+		"queryDir", queryDirValue,
+		"resolvedFilter", params.Filter,
+		"resolvedSort", params.Sort,
+		"resolvedDir", params.Dir,
+	)
+
+	return params
 }
 
 func (s *Server) renderDashboardResponse(w http.ResponseWriter, r *http.Request, ctx context.Context, params viewParams, flash flashMessage, fragments dashboardFragments) {

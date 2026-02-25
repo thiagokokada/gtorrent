@@ -407,6 +407,53 @@ func TestUIPageHasCacheBustedUIScript(t *testing.T) {
 	if !matched {
 		t.Fatalf("expected cache-busted ui.js script tag, body=%s", body)
 	}
+	if !strings.Contains(body, `hx-get="/ui/dashboard?dir=desc&amp;filter=all&amp;sort=addedAt"`) {
+		t.Fatalf("expected default dashboard load URL, body=%s", body)
+	}
+}
+
+func TestUIPageUsesPersistedViewCookiesForInitialDashboardURL(t *testing.T) {
+	s, err := New(&mockService{})
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/ui", nil)
+	req.AddCookie(&http.Cookie{Name: cookieFilter, Value: "seeding"})
+	req.AddCookie(&http.Cookie{Name: cookieSort, Value: "name"})
+	req.AddCookie(&http.Cookie{Name: cookieDir, Value: "asc"})
+	rr := httptest.NewRecorder()
+	s.Handler().ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d, body=%s", rr.Code, rr.Body.String())
+	}
+	body := rr.Body.String()
+	if !strings.Contains(body, `hx-get="/ui/dashboard?dir=asc&amp;filter=seeding&amp;sort=name"`) {
+		t.Fatalf("expected dashboard load URL from cookies, body=%s", body)
+	}
+}
+
+func TestUIPageQueryParamsOverridePersistedViewCookies(t *testing.T) {
+	s, err := New(&mockService{})
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/ui?filter=downloading&sort=ratio&dir=desc", nil)
+	req.AddCookie(&http.Cookie{Name: cookieFilter, Value: "seeding"})
+	req.AddCookie(&http.Cookie{Name: cookieSort, Value: "name"})
+	req.AddCookie(&http.Cookie{Name: cookieDir, Value: "asc"})
+	rr := httptest.NewRecorder()
+	s.Handler().ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d, body=%s", rr.Code, rr.Body.String())
+	}
+	body := rr.Body.String()
+	if !strings.Contains(body, `hx-get="/ui/dashboard?dir=desc&amp;filter=downloading&amp;sort=ratio"`) {
+		t.Fatalf("expected query params to override cookies, body=%s", body)
+	}
 }
 
 func TestEmptyEndpointRendersHiddenStatusPlaceholder(t *testing.T) {
