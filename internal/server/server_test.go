@@ -530,6 +530,58 @@ func TestSetSpeedLimits(t *testing.T) {
 	}
 }
 
+func TestSetSpeedLimitsHTMXReturnsControlsAndStatusOnly(t *testing.T) {
+	called := false
+	s, err := New(&mockService{
+		listFn: func(context.Context) ([]domain.Torrent, error) {
+			return []domain.Torrent{{Hash: "abc", Name: "Ubuntu ISO", State: "downloading"}}, nil
+		},
+		setSpeedLimitsFn: func(_ context.Context, limits domain.SpeedLimits) error {
+			called = true
+			if limits.DownloadKiB != 2048 || limits.UploadKiB != 512 {
+				t.Fatalf("unexpected speed limits: %+v", limits)
+			}
+			return nil
+		},
+		getSpeedLimitsFn: func(context.Context) (domain.SpeedLimits, error) {
+			return domain.SpeedLimits{DownloadKiB: 2048, UploadKiB: 512}, nil
+		},
+	})
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/ui/speed-limits", strings.NewReader("downloadLimitKiB=2048&uploadLimitKiB=512&filter=all&sort=addedAt&dir=desc"))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.Header.Set("HX-Request", "true")
+	req.Header.Set("HX-Target", "speed-limit-form")
+	rr := httptest.NewRecorder()
+	s.Handler().ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d, body=%s", rr.Code, rr.Body.String())
+	}
+	if !called {
+		t.Fatalf("expected SetSpeedLimits call")
+	}
+	body := rr.Body.String()
+	if strings.Contains(body, `<section id="dashboard"`) {
+		t.Fatalf("did not expect full dashboard for htmx fragment request, body=%s", body)
+	}
+	if !strings.Contains(body, `id="controls-panel" class="controls card" hx-swap-oob="outerHTML"`) {
+		t.Fatalf("expected controls fragment oob swap, body=%s", body)
+	}
+	if !strings.Contains(body, `id="form-message"`) {
+		t.Fatalf("expected status fragment in response, body=%s", body)
+	}
+	if strings.Contains(body, `id="file-list" class="table-panel card"`) {
+		t.Fatalf("did not expect file-list fragment for speed limit update, body=%s", body)
+	}
+	if strings.Contains(body, `id="global-stats" class="global-stats"`) {
+		t.Fatalf("did not expect stats fragment for speed limit update, body=%s", body)
+	}
+}
+
 func TestSetSpeedLimitsRejectsInvalidInput(t *testing.T) {
 	called := false
 	s, err := New(&mockService{

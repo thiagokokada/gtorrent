@@ -1,6 +1,7 @@
 package server
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"embed"
@@ -123,6 +124,29 @@ type indexView struct {
 	UIJSVersion string
 }
 
+type dashboardFragments struct {
+	ViewState bool
+	Stats     bool
+	Controls  bool
+	Status    bool
+	FileList  bool
+}
+
+var (
+	fragmentsAll = dashboardFragments{
+		ViewState: true,
+		Stats:     true,
+		Controls:  true,
+		Status:    true,
+		FileList:  true,
+	}
+	fragmentsControlsAndStatus = dashboardFragments{
+		ViewState: true,
+		Controls:  true,
+		Status:    true,
+	}
+)
+
 func New(svc Service) (*Server, error) {
 	sub, err := fs.Sub(staticFS, "static")
 	if err != nil {
@@ -206,7 +230,7 @@ func (s *Server) handleUIDashboard(w http.ResponseWriter, r *http.Request) {
 	}
 
 	params := parseViewParams(r.URL.Query())
-	s.renderDashboardResponse(w, r, r.Context(), params, flashMessage{})
+	s.renderDashboardResponse(w, r, r.Context(), params, flashMessage{}, fragmentsAll)
 }
 
 func (s *Server) handleUIAddTorrent(w http.ResponseWriter, r *http.Request) {
@@ -216,7 +240,7 @@ func (s *Server) handleUIAddTorrent(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := r.ParseMultipartForm(maxTorrentUploadBytes); err != nil {
-		s.renderDashboardResponse(w, r, r.Context(), defaultViewParams(), flashMessage{AddFormError: "invalid multipart payload"})
+		s.renderDashboardResponse(w, r, r.Context(), defaultViewParams(), flashMessage{AddFormError: "invalid multipart payload"}, fragmentsControlsAndStatus)
 		return
 	}
 
@@ -225,44 +249,44 @@ func (s *Server) handleUIAddTorrent(w http.ResponseWriter, r *http.Request) {
 
 	if magnet != "" {
 		if err := s.svc.AddMagnet(r.Context(), magnet); err != nil {
-			s.renderDashboardResponse(w, r, r.Context(), params, flashMessage{AddFormError: err.Error(), AddFormMagnet: magnet})
+			s.renderDashboardResponse(w, r, r.Context(), params, flashMessage{AddFormError: err.Error(), AddFormMagnet: magnet}, fragmentsControlsAndStatus)
 			return
 		}
-		s.renderDashboardResponse(w, r, r.Context(), params, flashMessage{Kind: "ok", Message: "Torrent added"})
+		s.renderDashboardResponse(w, r, r.Context(), params, flashMessage{Kind: "ok", Message: "Torrent added"}, fragmentsAll)
 		return
 	}
 
 	file, hdr, err := r.FormFile("torrent")
 	if err != nil {
 		if errors.Is(err, http.ErrMissingFile) {
-			s.renderDashboardResponse(w, r, r.Context(), params, flashMessage{AddFormError: "provide a magnet link or a .torrent file"})
+			s.renderDashboardResponse(w, r, r.Context(), params, flashMessage{AddFormError: "provide a magnet link or a .torrent file"}, fragmentsControlsAndStatus)
 			return
 		}
-		s.renderDashboardResponse(w, r, r.Context(), params, flashMessage{AddFormError: "invalid torrent file"})
+		s.renderDashboardResponse(w, r, r.Context(), params, flashMessage{AddFormError: "invalid torrent file"}, fragmentsControlsAndStatus)
 		return
 	}
 	defer file.Close()
 
 	data, err := io.ReadAll(io.LimitReader(file, maxTorrentUploadBytes+1))
 	if err != nil {
-		s.renderDashboardResponse(w, r, r.Context(), params, flashMessage{AddFormError: "failed to read torrent file"})
+		s.renderDashboardResponse(w, r, r.Context(), params, flashMessage{AddFormError: "failed to read torrent file"}, fragmentsControlsAndStatus)
 		return
 	}
 	if len(data) == 0 {
-		s.renderDashboardResponse(w, r, r.Context(), params, flashMessage{AddFormError: "torrent file is empty"})
+		s.renderDashboardResponse(w, r, r.Context(), params, flashMessage{AddFormError: "torrent file is empty"}, fragmentsControlsAndStatus)
 		return
 	}
 	if len(data) > maxTorrentUploadBytes {
-		s.renderDashboardResponse(w, r, r.Context(), params, flashMessage{AddFormError: "torrent file is too large"})
+		s.renderDashboardResponse(w, r, r.Context(), params, flashMessage{AddFormError: "torrent file is too large"}, fragmentsControlsAndStatus)
 		return
 	}
 
 	if err := s.svc.AddTorrent(r.Context(), data, hdr.Filename); err != nil {
-		s.renderDashboardResponse(w, r, r.Context(), params, flashMessage{AddFormError: err.Error()})
+		s.renderDashboardResponse(w, r, r.Context(), params, flashMessage{AddFormError: err.Error()}, fragmentsControlsAndStatus)
 		return
 	}
 
-	s.renderDashboardResponse(w, r, r.Context(), params, flashMessage{Kind: "ok", Message: "Torrent added"})
+	s.renderDashboardResponse(w, r, r.Context(), params, flashMessage{Kind: "ok", Message: "Torrent added"}, fragmentsAll)
 }
 
 func (s *Server) handleUISpeedLimits(w http.ResponseWriter, r *http.Request) {
@@ -271,23 +295,23 @@ func (s *Server) handleUISpeedLimits(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := r.ParseForm(); err != nil {
-		s.renderDashboardResponse(w, r, r.Context(), defaultViewParams(), flashMessage{Kind: "error", Message: "invalid form payload"})
+		s.renderDashboardResponse(w, r, r.Context(), defaultViewParams(), flashMessage{Kind: "error", Message: "invalid form payload"}, fragmentsControlsAndStatus)
 		return
 	}
 
 	params := parseViewParams(r.Form)
 	limits, err := parseSpeedLimits(r.Form)
 	if err != nil {
-		s.renderDashboardResponse(w, r, r.Context(), params, flashMessage{Kind: "error", Message: err.Error()})
+		s.renderDashboardResponse(w, r, r.Context(), params, flashMessage{Kind: "error", Message: err.Error()}, fragmentsControlsAndStatus)
 		return
 	}
 
 	if err := s.svc.SetSpeedLimits(r.Context(), limits); err != nil {
-		s.renderDashboardResponse(w, r, r.Context(), params, flashMessage{Kind: "error", Message: err.Error()})
+		s.renderDashboardResponse(w, r, r.Context(), params, flashMessage{Kind: "error", Message: err.Error()}, fragmentsControlsAndStatus)
 		return
 	}
 
-	s.renderDashboardResponse(w, r, r.Context(), params, flashMessage{Kind: "ok", Message: "Speed limits updated"})
+	s.renderDashboardResponse(w, r, r.Context(), params, flashMessage{Kind: "ok", Message: "Speed limits updated"}, fragmentsControlsAndStatus)
 }
 
 func (s *Server) handleUITorrentAction(w http.ResponseWriter, r *http.Request) {
@@ -296,7 +320,7 @@ func (s *Server) handleUITorrentAction(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := r.ParseForm(); err != nil {
-		s.renderDashboardResponse(w, r, r.Context(), defaultViewParams(), flashMessage{Kind: "error", Message: "invalid form payload"})
+		s.renderDashboardResponse(w, r, r.Context(), defaultViewParams(), flashMessage{Kind: "error", Message: "invalid form payload"}, fragmentsAll)
 		return
 	}
 	params := parseViewParams(r.Form)
@@ -305,7 +329,7 @@ func (s *Server) handleUITorrentAction(w http.ResponseWriter, r *http.Request) {
 	rawPath = strings.Trim(rawPath, "/")
 	parts := strings.Split(rawPath, "/")
 	if len(parts) != 2 || parts[0] == "" {
-		s.renderDashboardResponse(w, r, r.Context(), params, flashMessage{Kind: "error", Message: "invalid torrent action"})
+		s.renderDashboardResponse(w, r, r.Context(), params, flashMessage{Kind: "error", Message: "invalid torrent action"}, fragmentsAll)
 		return
 	}
 
@@ -328,15 +352,15 @@ func (s *Server) handleUITorrentAction(w http.ResponseWriter, r *http.Request) {
 		err = s.svc.Remove(r.Context(), hash, false)
 		message = "Torrent removed"
 	default:
-		s.renderDashboardResponse(w, r, r.Context(), params, flashMessage{Kind: "error", Message: "unknown action"})
+		s.renderDashboardResponse(w, r, r.Context(), params, flashMessage{Kind: "error", Message: "unknown action"}, fragmentsAll)
 		return
 	}
 
 	if err != nil {
-		s.renderDashboardResponse(w, r, r.Context(), params, flashMessage{Kind: "error", Message: err.Error()})
+		s.renderDashboardResponse(w, r, r.Context(), params, flashMessage{Kind: "error", Message: err.Error()}, fragmentsAll)
 		return
 	}
-	s.renderDashboardResponse(w, r, r.Context(), params, flashMessage{Kind: "ok", Message: message})
+	s.renderDashboardResponse(w, r, r.Context(), params, flashMessage{Kind: "ok", Message: message}, fragmentsAll)
 }
 
 func (s *Server) handleUIStream(w http.ResponseWriter, r *http.Request) {
@@ -510,9 +534,9 @@ func (s *Server) renderIndex(w http.ResponseWriter) {
 	}
 }
 
-func (s *Server) renderDashboardResponse(w http.ResponseWriter, r *http.Request, ctx context.Context, params viewParams, flash flashMessage) {
+func (s *Server) renderDashboardResponse(w http.ResponseWriter, r *http.Request, ctx context.Context, params viewParams, flash flashMessage, fragments dashboardFragments) {
 	if isHTMXFragmentRequest(r) {
-		s.renderDashboardFragments(w, ctx, params, flash)
+		s.renderDashboardFragments(w, ctx, params, flash, fragments)
 		return
 	}
 	s.renderDashboard(w, ctx, params, flash)
@@ -538,14 +562,50 @@ func (s *Server) renderDashboard(w http.ResponseWriter, ctx context.Context, par
 	}
 }
 
-func (s *Server) renderDashboardFragments(w http.ResponseWriter, ctx context.Context, params viewParams, flash flashMessage) {
+func (s *Server) renderDashboardFragments(w http.ResponseWriter, ctx context.Context, params viewParams, flash flashMessage, fragments dashboardFragments) {
 	view := s.dashboardViewWithFlash(ctx, params, flash)
 	view.SwapOOB = true
 
+	var body bytes.Buffer
+	if fragments.ViewState {
+		if err := s.templates.ExecuteTemplate(&body, "view-state", view); err != nil {
+			slog.Error("render dashboard fragments failed", "fragment", "view-state", "error", err)
+			http.Error(w, "internal server error", http.StatusInternalServerError)
+			return
+		}
+	}
+	if fragments.Stats {
+		if err := s.templates.ExecuteTemplate(&body, "stats", view); err != nil {
+			slog.Error("render dashboard fragments failed", "fragment", "stats", "error", err)
+			http.Error(w, "internal server error", http.StatusInternalServerError)
+			return
+		}
+	}
+	if fragments.Controls {
+		if err := s.templates.ExecuteTemplate(&body, "controls", view); err != nil {
+			slog.Error("render dashboard fragments failed", "fragment", "controls", "error", err)
+			http.Error(w, "internal server error", http.StatusInternalServerError)
+			return
+		}
+	}
+	if fragments.Status {
+		if err := s.templates.ExecuteTemplate(&body, "status", view); err != nil {
+			slog.Error("render dashboard fragments failed", "fragment", "status", "error", err)
+			http.Error(w, "internal server error", http.StatusInternalServerError)
+			return
+		}
+	}
+	if fragments.FileList {
+		if err := s.templates.ExecuteTemplate(&body, "file-list", view); err != nil {
+			slog.Error("render dashboard fragments failed", "fragment", "file-list", "error", err)
+			http.Error(w, "internal server error", http.StatusInternalServerError)
+			return
+		}
+	}
+
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	if err := s.templates.ExecuteTemplate(w, "fragments", view); err != nil {
-		slog.Error("render dashboard fragments failed", "error", err)
-		http.Error(w, "internal server error", http.StatusInternalServerError)
+	if _, err := io.Copy(w, &body); err != nil {
+		slog.Error("write dashboard fragments failed", "error", err)
 	}
 }
 
