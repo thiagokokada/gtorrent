@@ -128,6 +128,9 @@ func TestDashboardEndpointRendersTorrentRows(t *testing.T) {
 	if !strings.Contains(body, `id="add-btn" class="primary">Add</button>`) {
 		t.Fatalf("expected add button enabled by default in add dialog, body=%s", body)
 	}
+	if !strings.Contains(body, `id="status-preserve" hx-preserve`) {
+		t.Fatalf("expected preserved status wrapper, body=%s", body)
+	}
 	if !strings.Contains(body, "data-hash=\"abc\"") || !strings.Contains(body, `hx-get="/ui/dashboard?dir=desc&amp;filter=all&amp;selected=abc&amp;sort=addedAt"`) {
 		t.Fatalf("expected selectable row URL, body=%s", body)
 	}
@@ -169,7 +172,7 @@ func TestDashboardRendersFilterAndSortURLs(t *testing.T) {
 		t.Fatalf("regexp error = %v", err)
 	}
 	if !filterMatched {
-		t.Fatalf("expected filter button to swap full dashboard, body=%s", body)
+		t.Fatalf("expected filter button to refresh full dashboard, body=%s", body)
 	}
 	if !strings.Contains(body, `hx-get="/ui/dashboard?dir=asc&amp;filter=all&amp;selected=abc&amp;sort=addedAt"`) {
 		t.Fatalf("expected active sort toggle URL, body=%s", body)
@@ -180,7 +183,7 @@ func TestDashboardRendersFilterAndSortURLs(t *testing.T) {
 		t.Fatalf("regexp error = %v", err)
 	}
 	if !sortMatched {
-		t.Fatalf("expected active sort button to swap full dashboard, body=%s", body)
+		t.Fatalf("expected active sort button to refresh full dashboard, body=%s", body)
 	}
 	if !strings.Contains(body, `hx-get="/ui/dashboard?dir=asc&amp;filter=all&amp;selected=abc&amp;sort=name"`) {
 		t.Fatalf("expected sort URL default direction for name, body=%s", body)
@@ -191,7 +194,7 @@ func TestDashboardRendersFilterAndSortURLs(t *testing.T) {
 		t.Fatalf("regexp error = %v", err)
 	}
 	if !refreshMatched {
-		t.Fatalf("expected refresh button to swap full dashboard, body=%s", body)
+		t.Fatalf("expected refresh button to refresh full dashboard, body=%s", body)
 	}
 }
 
@@ -287,7 +290,7 @@ func TestDashboardHTMXReturnsFragmentBundle(t *testing.T) {
 		t.Fatalf("expected file-list fragment oob swap, body=%s", body)
 	}
 	if !strings.Contains(body, `id="view-state" hidden hx-swap-oob="outerHTML"`) {
-		t.Fatalf("expected view-state fragment oob swap, body=%s", body)
+		t.Fatalf("expected view-state fragment, body=%s", body)
 	}
 	if !strings.Contains(body, `id="global-stats" class="global-stats"`) || !strings.Contains(body, `hx-swap-oob="outerHTML"`) {
 		t.Fatalf("expected stats fragment oob swap, body=%s", body)

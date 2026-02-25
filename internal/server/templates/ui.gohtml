@@ -17,7 +17,9 @@
 
   {{template "controls" .}}
   {{template "add-dialog" .}}
-  {{template "status" .}}
+  <div id="status-preserve" hx-preserve class="status-preserve">
+    {{template "status" .}}
+  </div>
   {{template "file-list" .}}
 </section>
 {{end}}

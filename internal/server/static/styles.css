@@ -250,6 +250,10 @@ button:disabled {
   gap: 0.5rem;
 }
 
+.status-preserve {
+  display: contents;
+}
+
 .message.is-hidden {
   display: none;
 }
