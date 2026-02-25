@@ -2,7 +2,6 @@
   const CONNECTION_STATES = ["connecting", "online", "offline"];
 
   let connectionState = "connecting";
-  let dismissedMessageToken = "";
 
   function messageBoxEl() {
     return document.querySelector("#form-message");
@@ -36,47 +35,6 @@
     return "Connection error";
   }
 
-  function currentMessageToken() {
-    const box = messageBoxEl();
-    const textEl = messageTextEl();
-    if (!box || !textEl) {
-      return "";
-    }
-
-    const text = textEl.textContent.trim();
-    if (text === "") {
-      return "";
-    }
-
-    let kind = "info";
-    if (box.classList.contains("message-error")) {
-      kind = "error";
-    } else if (box.classList.contains("message-ok")) {
-      kind = "ok";
-    }
-    return kind + ":" + text;
-  }
-
-  function applyDismissedMessage() {
-    const box = messageBoxEl();
-    if (!box) {
-      return;
-    }
-
-    const token = currentMessageToken();
-    if (token === "") {
-      box.classList.add("is-hidden");
-      return;
-    }
-
-    if (token !== "" && token === dismissedMessageToken) {
-      box.classList.add("is-hidden");
-      return;
-    }
-
-    box.classList.remove("is-hidden");
-  }
-
   function showMessage(kind, text) {
     const box = messageBoxEl();
     const textEl = messageTextEl();
@@ -89,8 +47,6 @@
     textEl.textContent = normalizedText;
     box.classList.remove("is-hidden", "message-info", "message-ok", "message-error");
     box.classList.add("message-" + normalizedKind);
-
-    applyDismissedMessage();
   }
 
   function setConnectionState(state) {
@@ -114,7 +70,6 @@
 
   function syncDashboard() {
     setConnectionDot(connectionState);
-    applyDismissedMessage();
     syncAddButtonState();
   }
 
@@ -124,7 +79,6 @@
     }
 
     if (event.target.closest("#form-message-close")) {
-      dismissedMessageToken = currentMessageToken();
       const box = messageBoxEl();
       if (box) {
         box.classList.add("is-hidden");
@@ -170,11 +124,6 @@
   document.body.addEventListener("htmx:afterSwap", function (event) {
     const target = event.detail && event.detail.target;
     if (!target) {
-      return;
-    }
-
-    if (target.id === "form-message") {
-      applyDismissedMessage();
       return;
     }
 
