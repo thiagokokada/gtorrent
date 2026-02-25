@@ -613,6 +613,100 @@ input[type="file"]::file-selector-button {
     flex-wrap: wrap;
   }
 
+  .controls {
+    display: grid;
+    grid-template-columns: 1fr;
+    align-items: stretch;
+    gap: 0.46rem;
+    padding: 0.45rem;
+  }
+
+  .controls-divider {
+    display: none;
+  }
+
+  .controls-section {
+    width: 100%;
+    min-height: 0;
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 0.28rem;
+  }
+
+  .action-row {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 0.28rem;
+  }
+
+  .action-row button {
+    width: 100%;
+  }
+
+  .filter-row {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.28rem;
+  }
+
+  .filter-row button {
+    width: 100%;
+  }
+
+  .search-form {
+    width: 100%;
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 0.35rem;
+  }
+
+  .search-field {
+    grid-column: 1 / -1;
+    min-width: 0;
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 0;
+  }
+
+  .search-field span {
+    display: none;
+  }
+
+  .search-field input[type="search"] {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .search-form button {
+    justify-self: end;
+  }
+
+  .speed-limit-form {
+    width: 100%;
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 0.35rem;
+  }
+
+  .speed-limit-field {
+    grid-column: 1 / -1;
+    min-width: 0;
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    gap: 0.35rem;
+  }
+
+  .speed-limit-field input[type="number"] {
+    width: 100%;
+    min-width: 0;
+    max-width: 170px;
+    justify-self: end;
+  }
+
+  .speed-limit-form button {
+    justify-self: end;
+  }
+
   .table-wrap {
     max-height: calc(100vh - 225px);
   }
