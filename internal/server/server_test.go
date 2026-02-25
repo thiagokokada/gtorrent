@@ -300,50 +300,14 @@ func TestUIStreamEndpoint(t *testing.T) {
 	if !strings.Contains(body, "event: stats") {
 		t.Fatalf("expected stats event, body=%s", body)
 	}
+	if !strings.Contains(body, "event: status") {
+		t.Fatalf("expected status event, body=%s", body)
+	}
 	if !strings.Contains(body, "event: table") {
 		t.Fatalf("expected table event, body=%s", body)
 	}
 	if strings.Contains(body, "event: backend-status") {
 		t.Fatalf("unexpected backend-status event in ui stream, body=%s", body)
-	}
-}
-
-func TestUIBackendStatusStreamEndpoint(t *testing.T) {
-	s, err := New(&mockService{
-		backendStatusFn: func() domain.BackendStatus {
-			return domain.BackendStatus{
-				Kind:    "error",
-				Message: "Error talking to rTorrent (/run/rtorrent/rpc.sock): dial unix socket: no such file or directory",
-			}
-		},
-	})
-	if err != nil {
-		t.Fatalf("New() error = %v", err)
-	}
-
-	ctx, cancel := context.WithCancel(context.Background())
-	cancel()
-
-	req := httptest.NewRequest(http.MethodGet, "/ui/backend-status/stream", nil).WithContext(ctx)
-	rr := httptest.NewRecorder()
-	s.Handler().ServeHTTP(rr, req)
-
-	if rr.Code != http.StatusOK {
-		t.Fatalf("status = %d, body=%s", rr.Code, rr.Body.String())
-	}
-	if got := rr.Header().Get("Content-Type"); !strings.HasPrefix(got, "text/event-stream") {
-		t.Fatalf("content-type = %q", got)
-	}
-
-	body := rr.Body.String()
-	if !strings.Contains(body, "event: status") {
-		t.Fatalf("expected status event, body=%s", body)
-	}
-	if !strings.Contains(body, "\"kind\":\"error\"") {
-		t.Fatalf("expected status kind payload, body=%s", body)
-	}
-	if !strings.Contains(body, "/run/rtorrent/rpc.sock") {
-		t.Fatalf("expected connection target in payload, body=%s", body)
 	}
 }
 
@@ -390,10 +354,13 @@ func TestDashboardRendersBackendStatus(t *testing.T) {
 		t.Fatalf("status = %d, body=%s", rr.Code, rr.Body.String())
 	}
 	body := rr.Body.String()
-	if !strings.Contains(body, "data-backend-status-kind=\"ok\"") {
-		t.Fatalf("expected backend status kind in stats, body=%s", body)
+	if !strings.Contains(body, `id="form-message"`) {
+		t.Fatalf("expected status bar in dashboard, body=%s", body)
+	}
+	if !strings.Contains(body, "message-ok") {
+		t.Fatalf("expected ok status class in status bar, body=%s", body)
 	}
 	if !strings.Contains(body, "Connected successfully to rTorrent: /run/rtorrent/rpc.sock") {
-		t.Fatalf("expected backend status message in stats, body=%s", body)
+		t.Fatalf("expected backend status message in status bar, body=%s", body)
 	}
 }

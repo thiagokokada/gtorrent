@@ -93,21 +93,20 @@ type torrentRow struct {
 }
 
 type dashboardView struct {
-	Params               viewParams
-	Flash                flashMessage
-	Torrents             []torrentRow
-	HasSelected          bool
-	SelectedHash         string
-	SelectedRunning      bool
-	VisibleCount         int
-	TotalDownRate        string
-	TotalUpRate          string
-	StreamURL            string
-	DashboardURL         string
-	FilterURLs           map[string]string
-	SortURLs             map[string]string
-	BackendStatusKind    string
-	BackendStatusMessage string
+	Params          viewParams
+	Torrents        []torrentRow
+	HasSelected     bool
+	SelectedHash    string
+	SelectedRunning bool
+	StatusKind      string
+	StatusMessage   string
+	VisibleCount    int
+	TotalDownRate   string
+	TotalUpRate     string
+	StreamURL       string
+	DashboardURL    string
+	FilterURLs      map[string]string
+	SortURLs        map[string]string
 }
 
 type indexView struct {
@@ -158,7 +157,6 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/ui/torrents", s.handleUIAddTorrent)
 	mux.HandleFunc("/ui/torrents/", s.handleUITorrentAction)
 	mux.HandleFunc("/ui/stream", s.handleUIStream)
-	mux.HandleFunc("/ui/backend-status/stream", s.handleUIBackendStatusStream)
 	mux.HandleFunc("/healthz", s.handleHealthz)
 	mux.HandleFunc("/", s.handleStatic)
 	return loggingMiddleware(mux)
@@ -352,99 +350,26 @@ func (s *Server) handleUIStream(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (s *Server) handleUIBackendStatusStream(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		writeMethodNotAllowed(w, http.MethodGet)
-		return
-	}
-
-	flusher, ok := w.(http.Flusher)
-	if !ok {
-		writeError(w, http.StatusInternalServerError, "streaming unsupported")
-		return
-	}
-
-	ctx := r.Context()
-	streamCtx, streamCancel := context.WithCancel(ctx)
-	defer streamCancel()
-	go func() {
-		select {
-		case <-s.streamStop:
-			streamCancel()
-		case <-ctx.Done():
-		}
-	}()
-
-	w.Header().Set("Content-Type", "text/event-stream")
-	w.Header().Set("Cache-Control", "no-cache")
-	w.Header().Set("Connection", "keep-alive")
-	w.Header().Set("X-Accel-Buffering", "no")
-
-	if _, err := io.WriteString(w, "retry: 3000\n\n"); err != nil {
-		return
-	}
-
-	lastKind := ""
-	lastMessage := ""
-	writeStatus := func() error {
-		status := s.currentBackendStatus(nil)
-		if status.Kind == lastKind && status.Message == lastMessage {
-			return nil
-		}
-		if err := writeSSEJSON(w, flusher, "status", map[string]any{
-			"kind":    status.Kind,
-			"message": status.Message,
-		}); err != nil {
-			return err
-		}
-		lastKind = status.Kind
-		lastMessage = status.Message
-		return nil
-	}
-
-	if err := writeStatus(); err != nil {
-		return
-	}
-
-	pollTicker := time.NewTicker(streamPollInterval)
-	defer pollTicker.Stop()
-
-	keepaliveTicker := time.NewTicker(streamKeepaliveInterval)
-	defer keepaliveTicker.Stop()
-
-	for {
-		select {
-		case <-streamCtx.Done():
-			return
-		case <-pollTicker.C:
-			if err := writeStatus(); err != nil {
-				return
-			}
-		case <-keepaliveTicker.C:
-			if _, err := io.WriteString(w, ": ping\n\n"); err != nil {
-				return
-			}
-			flusher.Flush()
-		}
-	}
-}
-
 func (s *Server) writeLiveUpdate(w io.Writer, flusher http.Flusher, ctx context.Context, params viewParams) error {
 	view, err := s.buildDashboardView(ctx, params)
 	if err != nil {
-		status := s.currentBackendStatus(err)
+		statusKind, statusMessage := statusFromBackendStatus(s.currentBackendStatus(err))
 		dashboardURL, filterURLs, sortURLs := controlURLs(params)
 		fallback := dashboardView{
-			Params:               params,
-			VisibleCount:         0,
-			TotalDownRate:        "0 B/s",
-			TotalUpRate:          "0 B/s",
-			StreamURL:            streamURLForParams(params),
-			DashboardURL:         dashboardURL,
-			FilterURLs:           filterURLs,
-			SortURLs:             sortURLs,
-			BackendStatusKind:    status.Kind,
-			BackendStatusMessage: status.Message,
+			Params:        params,
+			StatusKind:    statusKind,
+			StatusMessage: statusMessage,
+			VisibleCount:  0,
+			TotalDownRate: "0 B/s",
+			TotalUpRate:   "0 B/s",
+			StreamURL:     streamURLForParams(params),
+			DashboardURL:  dashboardURL,
+			FilterURLs:    filterURLs,
+			SortURLs:      sortURLs,
+		}
+		statusHTML, renderErr := s.renderTemplateToString("status", fallback)
+		if renderErr != nil {
+			return renderErr
 		}
 		statsHTML, renderErr := s.renderTemplateToString("stats", fallback)
 		if renderErr != nil {
@@ -457,12 +382,19 @@ func (s *Server) writeLiveUpdate(w io.Writer, flusher http.Flusher, ctx context.
 		if writeErr := writeSSEHTML(w, flusher, "stats", statsHTML); writeErr != nil {
 			return writeErr
 		}
+		if writeErr := writeSSEHTML(w, flusher, "status", statusHTML); writeErr != nil {
+			return writeErr
+		}
 		if writeErr := writeSSEHTML(w, flusher, "table", tableHTML); writeErr != nil {
 			return writeErr
 		}
 		return nil
 	}
 
+	statusHTML, err := s.renderTemplateToString("status", view)
+	if err != nil {
+		return err
+	}
 	statsHTML, err := s.renderTemplateToString("stats", view)
 	if err != nil {
 		return err
@@ -472,6 +404,9 @@ func (s *Server) writeLiveUpdate(w io.Writer, flusher http.Flusher, ctx context.
 		return err
 	}
 	if err := writeSSEHTML(w, flusher, "stats", statsHTML); err != nil {
+		return err
+	}
+	if err := writeSSEHTML(w, flusher, "status", statusHTML); err != nil {
 		return err
 	}
 	if err := writeSSEHTML(w, flusher, "table", tableHTML); err != nil {
@@ -510,22 +445,31 @@ func (s *Server) renderIndex(w http.ResponseWriter) {
 func (s *Server) renderDashboard(w http.ResponseWriter, ctx context.Context, params viewParams, flash flashMessage) {
 	view, err := s.buildDashboardView(ctx, params)
 	if err != nil {
-		status := s.currentBackendStatus(err)
+		statusKind, statusMessage := statusFromBackendStatus(s.currentBackendStatus(err))
 		dashboardURL, filterURLs, sortURLs := controlURLs(params)
 		view = dashboardView{
-			Params:               params,
-			VisibleCount:         0,
-			TotalDownRate:        "0 B/s",
-			TotalUpRate:          "0 B/s",
-			StreamURL:            streamURLForParams(params),
-			DashboardURL:         dashboardURL,
-			FilterURLs:           filterURLs,
-			SortURLs:             sortURLs,
-			BackendStatusKind:    status.Kind,
-			BackendStatusMessage: status.Message,
+			Params:        params,
+			StatusKind:    statusKind,
+			StatusMessage: statusMessage,
+			VisibleCount:  0,
+			TotalDownRate: "0 B/s",
+			TotalUpRate:   "0 B/s",
+			StreamURL:     streamURLForParams(params),
+			DashboardURL:  dashboardURL,
+			FilterURLs:    filterURLs,
+			SortURLs:      sortURLs,
 		}
 	}
-	view.Flash = flash
+	if strings.TrimSpace(flash.Message) != "" {
+		view.StatusMessage = strings.TrimSpace(flash.Message)
+		switch flash.Kind {
+		case "error", "ok":
+			view.StatusKind = flash.Kind
+		default:
+			view.StatusKind = "info"
+		}
+	}
+
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	if err := s.templates.ExecuteTemplate(w, "dashboard", view); err != nil {
 		slog.Error("render dashboard failed", "error", err)
@@ -588,23 +532,23 @@ func (s *Server) buildDashboardView(ctx context.Context, params viewParams) (das
 		selectedRunning = false
 	}
 
-	status := s.currentBackendStatus(nil)
+	statusKind, statusMessage := statusFromBackendStatus(s.currentBackendStatus(nil))
 	dashboardURL, filterURLs, sortURLs := controlURLs(params)
 	return dashboardView{
-		Params:               params,
-		Torrents:             rows,
-		HasSelected:          selectedHash != "",
-		SelectedHash:         selectedHash,
-		SelectedRunning:      selectedRunning,
-		VisibleCount:         len(rows),
-		TotalDownRate:        formatRate(downTotal),
-		TotalUpRate:          formatRate(upTotal),
-		StreamURL:            streamURLForParams(params),
-		DashboardURL:         dashboardURL,
-		FilterURLs:           filterURLs,
-		SortURLs:             sortURLs,
-		BackendStatusKind:    status.Kind,
-		BackendStatusMessage: status.Message,
+		Params:          params,
+		Torrents:        rows,
+		HasSelected:     selectedHash != "",
+		SelectedHash:    selectedHash,
+		SelectedRunning: selectedRunning,
+		StatusKind:      statusKind,
+		StatusMessage:   statusMessage,
+		VisibleCount:    len(rows),
+		TotalDownRate:   formatRate(downTotal),
+		TotalUpRate:     formatRate(upTotal),
+		StreamURL:       streamURLForParams(params),
+		DashboardURL:    dashboardURL,
+		FilterURLs:      filterURLs,
+		SortURLs:        sortURLs,
 	}, nil
 }
 
@@ -634,6 +578,24 @@ func (s *Server) currentBackendStatus(fallbackErr error) domain.BackendStatus {
 	}
 
 	return domain.BackendStatus{}
+}
+
+func statusFromBackendStatus(status domain.BackendStatus) (string, string) {
+	kind := strings.TrimSpace(status.Kind)
+	message := strings.TrimSpace(status.Message)
+
+	switch kind {
+	case "error":
+		if message != "" {
+			return "error", message
+		}
+	case "ok":
+		if message != "" {
+			return "ok", message
+		}
+	}
+
+	return "ok", "Connected"
 }
 
 func filterTorrents(items []domain.Torrent, params viewParams) []domain.Torrent {
@@ -960,23 +922,6 @@ func writeSSEHTML(w io.Writer, flusher http.Flusher, event, html string) error {
 		}
 	}
 	if _, err := io.WriteString(w, "\n"); err != nil {
-		return err
-	}
-	flusher.Flush()
-	return nil
-}
-
-func writeSSEJSON(w io.Writer, flusher http.Flusher, event string, payload map[string]any) error {
-	data, err := json.Marshal(payload)
-	if err != nil {
-		return err
-	}
-	if event != "" {
-		if _, err := fmt.Fprintf(w, "event: %s\n", event); err != nil {
-			return err
-		}
-	}
-	if _, err := fmt.Fprintf(w, "data: %s\n\n", data); err != nil {
 		return err
 	}
 	flusher.Flush()

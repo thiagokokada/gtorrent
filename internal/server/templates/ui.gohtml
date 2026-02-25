@@ -82,10 +82,7 @@
     </div>
   </section>
 
-  <div id="form-message" class="message status-message {{if .Flash.Message}}message-{{.Flash.Kind}}{{else}}message-info{{end}}" data-flash="{{if .Flash.Message}}1{{else}}0{{end}}" role="status" aria-live="polite">
-    <span id="form-message-text">{{if .Flash.Message}}{{.Flash.Message}}{{else}}Connecting...{{end}}</span>
-    <button type="button" id="form-message-close" class="message-close" aria-label="Dismiss message">x</button>
-  </div>
+  {{template "status" .}}
 
   <section class="table-panel card">
     <div class="table-wrap">
@@ -148,12 +145,19 @@
 </section>
 {{end}}
 
+{{define "status"}}
+<div id="form-message" class="message status-message message-{{.StatusKind}}" sse-swap="status" hx-swap="outerHTML" role="status" aria-live="polite">
+  <span id="form-message-text">{{.StatusMessage}}</span>
+  <button type="button" id="form-message-close" class="message-close" aria-label="Dismiss message">x</button>
+</div>
+{{end}}
+
 {{define "stats"}}
-<div id="global-stats" class="global-stats" sse-swap="stats" hx-swap="outerHTML" data-backend-status-kind="{{.BackendStatusKind}}" data-backend-status-message="{{.BackendStatusMessage}}">{{.VisibleCount}} torrents | ↓ {{.TotalDownRate}} | ↑ {{.TotalUpRate}}</div>
+<div id="global-stats" class="global-stats" sse-swap="stats" hx-swap="outerHTML">{{.VisibleCount}} torrents | ↓ {{.TotalDownRate}} | ↑ {{.TotalUpRate}}</div>
 {{end}}
 
 {{define "table"}}
-  <tbody id="torrents-body" sse-swap="table" hx-swap="outerHTML" data-backend-status-kind="{{.BackendStatusKind}}" data-backend-status-message="{{.BackendStatusMessage}}">
+  <tbody id="torrents-body" sse-swap="table" hx-swap="outerHTML">
   {{if .Torrents}}
     {{range .Torrents}}
       <tr data-hash="{{.Hash}}" class="{{if .Active}}active{{end}}"
