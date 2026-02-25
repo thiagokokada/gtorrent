@@ -225,6 +225,40 @@ func TestDashboardRendersSelectedActionButtons(t *testing.T) {
 	}
 }
 
+func TestDashboardHTMXReturnsFragmentBundle(t *testing.T) {
+	s, err := New(&mockService{
+		listFn: func(context.Context) ([]domain.Torrent, error) {
+			return []domain.Torrent{{Hash: "abc", Name: "Ubuntu ISO", State: "downloading"}}, nil
+		},
+	})
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/ui/dashboard?selected=abc", nil)
+	req.Header.Set("HX-Request", "true")
+	req.Header.Set("HX-Target", "toggle-selected")
+	rr := httptest.NewRecorder()
+	s.Handler().ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d, body=%s", rr.Code, rr.Body.String())
+	}
+	body := rr.Body.String()
+	if strings.Contains(body, `<section id="dashboard"`) {
+		t.Fatalf("did not expect full dashboard for htmx fragment request, body=%s", body)
+	}
+	if !strings.Contains(body, `id="controls-panel" class="controls card" hx-swap-oob="outerHTML"`) {
+		t.Fatalf("expected controls fragment oob swap, body=%s", body)
+	}
+	if !strings.Contains(body, `id="file-list" class="table-panel card" hx-swap-oob="outerHTML"`) {
+		t.Fatalf("expected file-list fragment oob swap, body=%s", body)
+	}
+	if !strings.Contains(body, `id="form-message"`) || !strings.Contains(body, `hx-swap-oob="outerHTML"`) {
+		t.Fatalf("expected status fragment oob swap, body=%s", body)
+	}
+}
+
 func TestUIPageHasCacheBustedUIScript(t *testing.T) {
 	s, err := New(&mockService{})
 	if err != nil {
@@ -358,6 +392,58 @@ func TestAddTorrentRequiresMagnetOrFile(t *testing.T) {
 	}
 	if strings.Contains(responseBody, `<span id="form-message-text">provide a magnet link or a .torrent file</span>`) {
 		t.Fatalf("did not expect global status message for add form validation error, body=%s", responseBody)
+	}
+}
+
+func TestAddTorrentRequiresMagnetOrFileHTMXReturnsFragments(t *testing.T) {
+	called := false
+	s, err := New(&mockService{
+		listFn: func(context.Context) ([]domain.Torrent, error) {
+			return nil, nil
+		},
+		addMagnetFn: func(context.Context, string) error {
+			called = true
+			return nil
+		},
+		addFileFn: func(context.Context, []byte, string) error {
+			called = true
+			return nil
+		},
+	})
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+
+	var body bytes.Buffer
+	writer := multipart.NewWriter(&body)
+	_ = writer.WriteField("filter", "all")
+	_ = writer.Close()
+
+	req := httptest.NewRequest(http.MethodPost, "/ui/torrents", &body)
+	req.Header.Set("Content-Type", writer.FormDataContentType())
+	req.Header.Set("HX-Request", "true")
+	req.Header.Set("HX-Target", "add-form")
+	rr := httptest.NewRecorder()
+	s.Handler().ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d, body=%s", rr.Code, rr.Body.String())
+	}
+	if called {
+		t.Fatalf("did not expect AddMagnet or AddTorrent call")
+	}
+	responseBody := rr.Body.String()
+	if strings.Contains(responseBody, `<section id="dashboard"`) {
+		t.Fatalf("did not expect full dashboard for htmx fragment request, body=%s", responseBody)
+	}
+	if !strings.Contains(responseBody, `class="add-form-error"`) {
+		t.Fatalf("expected inline add form error, body=%s", responseBody)
+	}
+	if !strings.Contains(responseBody, `<dialog id="add-dialog" class="add-dialog" data-open-on-load="true">`) {
+		t.Fatalf("expected add dialog to request modal reopen, body=%s", responseBody)
+	}
+	if !strings.Contains(responseBody, `id="controls-panel" class="controls card" hx-swap-oob="outerHTML"`) {
+		t.Fatalf("expected controls fragment oob swap, body=%s", responseBody)
 	}
 }
 

@@ -83,10 +83,11 @@
     const target = event.detail?.target;
     if (target?.id === "dashboard") {
       setConnectionDot(connectionState);
-      const addDialog = document.querySelector("#add-dialog[data-open-on-load]");
-      if (addDialog instanceof HTMLDialogElement && !addDialog.open) {
-        addDialog.showModal();
-      }
+    }
+
+    const addDialog = document.querySelector("#add-dialog[data-open-on-load]");
+    if (addDialog instanceof HTMLDialogElement && !addDialog.open) {
+      addDialog.showModal();
     }
   });
 
