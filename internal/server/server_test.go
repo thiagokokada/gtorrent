@@ -368,7 +368,7 @@ func TestUIPageHasCacheBustedUIScript(t *testing.T) {
 	}
 
 	body := rr.Body.String()
-	matched, err := regexp.MatchString(`src="/ui\.js\?v=[0-9a-f]{16}"`, body)
+	matched, err := regexp.MatchString(`<script type="module" defer src="/ui\.js\?v=[0-9a-f]{16}"></script>`, body)
 	if err != nil {
 		t.Fatalf("regexp error = %v", err)
 	}
