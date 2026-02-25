@@ -104,8 +104,8 @@ func TestDashboardEndpointRendersTorrentRows(t *testing.T) {
 	if !strings.Contains(body, "id=\"toggle-selected\"") {
 		t.Fatalf("expected top-bar action buttons, body=%s", body)
 	}
-	if !strings.Contains(body, "data-hash=\"abc\"") || !strings.Contains(body, "data-running=\"1\"") {
-		t.Fatalf("expected selectable running row, body=%s", body)
+	if !strings.Contains(body, "data-hash=\"abc\"") || !strings.Contains(body, `hx-get="/ui/dashboard?dir=desc&amp;filter=all&amp;selected=abc&amp;sort=addedAt"`) {
+		t.Fatalf("expected selectable row URL, body=%s", body)
 	}
 }
 
@@ -136,6 +136,38 @@ func TestDashboardRendersFilterAndSortURLs(t *testing.T) {
 	}
 	if !strings.Contains(body, `hx-get="/ui/dashboard?dir=asc&amp;filter=all&amp;selected=abc&amp;sort=name"`) {
 		t.Fatalf("expected sort URL default direction for name, body=%s", body)
+	}
+}
+
+func TestDashboardRendersSelectedActionButtons(t *testing.T) {
+	s, err := New(&mockService{
+		listFn: func(context.Context) ([]domain.Torrent, error) {
+			return []domain.Torrent{
+				{Hash: "abc", Name: "Ubuntu ISO", State: "downloading"},
+			}, nil
+		},
+	})
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/ui/dashboard?selected=abc", nil)
+	rr := httptest.NewRecorder()
+	s.Handler().ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d, body=%s", rr.Code, rr.Body.String())
+	}
+
+	body := rr.Body.String()
+	if !strings.Contains(body, `id="toggle-selected" class="secondary"`) || !strings.Contains(body, `hx-post="/ui/torrents/abc/stop"`) {
+		t.Fatalf("expected selected running toggle button, body=%s", body)
+	}
+	if !strings.Contains(body, `hx-post="/ui/torrents/abc/recheck"`) {
+		t.Fatalf("expected selected recheck button, body=%s", body)
+	}
+	if !strings.Contains(body, `hx-post="/ui/torrents/abc/remove"`) {
+		t.Fatalf("expected selected remove button, body=%s", body)
 	}
 }
 

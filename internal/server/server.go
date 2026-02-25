@@ -79,6 +79,7 @@ type torrentRow struct {
 	StateClass    string
 	Running       bool
 	Active        bool
+	SelectURL     string
 	AddedAt       string
 	ProgressPct   int
 	ProgressValue string
@@ -95,6 +96,9 @@ type dashboardView struct {
 	Params               viewParams
 	Flash                flashMessage
 	Torrents             []torrentRow
+	HasSelected          bool
+	SelectedHash         string
+	SelectedRunning      bool
 	VisibleCount         int
 	TotalDownRate        string
 	TotalUpRate          string
@@ -541,17 +545,24 @@ func (s *Server) buildDashboardView(ctx context.Context, params viewParams) (das
 	rows := make([]torrentRow, 0, len(filtered))
 	var downTotal int64
 	var upTotal int64
+	selectedHash := strings.TrimSpace(params.Selected)
+	selectedFound := false
+	selectedRunning := false
 
 	for _, item := range filtered {
 		state := normalizeState(item.State)
 		progress := clampProgress(item.Progress)
+		active := selectedHash != "" && item.Hash == selectedHash
+		rowParams := params
+		rowParams.Selected = item.Hash
 		rows = append(rows, torrentRow{
 			Hash:          item.Hash,
 			Name:          torrentDisplayName(item),
 			State:         state,
 			StateClass:    state,
 			Running:       state == "downloading" || state == "seeding",
-			Active:        params.Selected != "" && item.Hash == params.Selected,
+			Active:        active,
+			SelectURL:     dashboardURLForParams(rowParams),
 			AddedAt:       formatAdded(item.AddedAt),
 			ProgressPct:   int(math.Round(progress * 100)),
 			ProgressValue: strconv.FormatFloat(progress, 'f', 4, 64),
@@ -563,8 +574,18 @@ func (s *Server) buildDashboardView(ctx context.Context, params viewParams) (das
 			UpRate:        formatRate(item.UpRate),
 			Size:          fmt.Sprintf("%s / %s", formatBytes(item.DoneBytes), formatBytes(item.SizeBytes)),
 		})
+		if active {
+			selectedFound = true
+			selectedRunning = state == "downloading" || state == "seeding"
+		}
 		downTotal += item.DownRate
 		upTotal += item.UpRate
+	}
+
+	if !selectedFound {
+		params.Selected = ""
+		selectedHash = ""
+		selectedRunning = false
 	}
 
 	status := s.currentBackendStatus(nil)
@@ -572,6 +593,9 @@ func (s *Server) buildDashboardView(ctx context.Context, params viewParams) (das
 	return dashboardView{
 		Params:               params,
 		Torrents:             rows,
+		HasSelected:          selectedHash != "",
+		SelectedHash:         selectedHash,
+		SelectedRunning:      selectedRunning,
 		VisibleCount:         len(rows),
 		TotalDownRate:        formatRate(downTotal),
 		TotalUpRate:          formatRate(upTotal),

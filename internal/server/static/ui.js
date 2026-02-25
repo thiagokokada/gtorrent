@@ -12,21 +12,12 @@
   let messageHideTimer = 0;
   let backendStatusStream = null;
 
-  function inputEl(id) {
-    return document.querySelector("#" + id);
-  }
-
   function messageBoxEl() {
     return document.querySelector("#form-message");
   }
 
   function messageTextEl() {
     return document.querySelector("#form-message-text");
-  }
-
-  function selectedHash() {
-    const input = inputEl("selected-input");
-    return input ? input.value.trim() : "";
   }
 
   function hideMessageBox() {
@@ -296,107 +287,7 @@
     dialog.setAttribute("open", "open");
   }
 
-  function selectedRow() {
-    const hash = selectedHash();
-    if (hash === "") {
-      return null;
-    }
-    const rows = document.querySelectorAll("#torrents-body tr[data-hash]");
-    for (const row of rows) {
-      if (row.dataset.hash === hash) {
-        return row;
-      }
-    }
-    return null;
-  }
-
-  function setSelectedHash(hash) {
-    const input = inputEl("selected-input");
-    if (!input) {
-      return;
-    }
-    input.value = hash || "";
-    syncSelection();
-    syncActionButtons();
-  }
-
-  function syncSelection() {
-    const hash = selectedHash();
-    let found = false;
-
-    const rows = document.querySelectorAll("#torrents-body tr[data-hash]");
-    for (const row of rows) {
-      const active = hash !== "" && row.dataset.hash === hash;
-      row.classList.toggle("active", active);
-      if (active) {
-        found = true;
-      }
-    }
-
-    if (!found && hash !== "") {
-      const input = inputEl("selected-input");
-      if (input) {
-        input.value = "";
-      }
-    }
-  }
-
-  function resetActionButton(button, label) {
-    if (!button) {
-      return;
-    }
-    button.disabled = true;
-    button.textContent = label;
-    button.removeAttribute("hx-post");
-  }
-
-  function processHtmx(element) {
-    if (!window.htmx || !element) {
-      return;
-    }
-    window.htmx.process(element);
-  }
-
-  function syncActionButtons() {
-    const toggleBtn = document.querySelector("#toggle-selected");
-    const recheckBtn = document.querySelector("#recheck-selected");
-    const removeBtn = document.querySelector("#remove-selected");
-
-    const row = selectedRow();
-    if (!row) {
-      resetActionButton(toggleBtn, "Start");
-      resetActionButton(recheckBtn, "Recheck");
-      resetActionButton(removeBtn, "Remove");
-      return;
-    }
-
-    const hash = row.dataset.hash || "";
-    const hashPath = encodeURIComponent(hash);
-    const isRunning = row.dataset.running === "1";
-
-    if (toggleBtn) {
-      toggleBtn.disabled = false;
-      toggleBtn.textContent = isRunning ? "Stop" : "Start";
-      toggleBtn.setAttribute("hx-post", "/ui/torrents/" + hashPath + "/" + (isRunning ? "stop" : "start"));
-      processHtmx(toggleBtn);
-    }
-    if (recheckBtn) {
-      recheckBtn.disabled = false;
-      recheckBtn.textContent = "Recheck";
-      recheckBtn.setAttribute("hx-post", "/ui/torrents/" + hashPath + "/recheck");
-      processHtmx(recheckBtn);
-    }
-    if (removeBtn) {
-      removeBtn.disabled = false;
-      removeBtn.textContent = "Remove";
-      removeBtn.setAttribute("hx-post", "/ui/torrents/" + hashPath + "/remove");
-      processHtmx(removeBtn);
-    }
-  }
-
   function syncDashboard() {
-    syncSelection();
-    syncActionButtons();
     syncBackendFromStats();
     setConnectionDot(connectionState);
     if (!captureFlashMessage()) {
@@ -446,12 +337,6 @@
   document.addEventListener("click", function (event) {
     const target = eventElement(event);
     if (!target) {
-      return;
-    }
-
-    const row = target.closest("#torrents-body tr[data-hash]");
-    if (row) {
-      setSelectedHash(row.dataset.hash || "");
       return;
     }
 
