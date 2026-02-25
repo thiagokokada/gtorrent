@@ -131,6 +131,14 @@ func TestDashboardEndpointRendersTorrentRows(t *testing.T) {
 	if !strings.Contains(body, "data-hash=\"abc\"") || !strings.Contains(body, `hx-get="/ui/dashboard?dir=desc&amp;filter=all&amp;selected=abc&amp;sort=addedAt"`) {
 		t.Fatalf("expected selectable row URL, body=%s", body)
 	}
+	rowSelectPattern := `(?s)<tr data-hash="abc" class="".*hx-get="/ui/dashboard\?dir=desc&amp;filter=all&amp;selected=abc&amp;sort=addedAt".*hx-target="#dashboard".*hx-swap="outerHTML"`
+	matched, err := regexp.MatchString(rowSelectPattern, body)
+	if err != nil {
+		t.Fatalf("regexp error = %v", err)
+	}
+	if !matched {
+		t.Fatalf("expected row selection to swap full dashboard, body=%s", body)
+	}
 }
 
 func TestDashboardRendersFilterAndSortURLs(t *testing.T) {
@@ -155,11 +163,35 @@ func TestDashboardRendersFilterAndSortURLs(t *testing.T) {
 	if !strings.Contains(body, `hx-get="/ui/dashboard?dir=desc&amp;filter=downloading&amp;selected=abc&amp;sort=addedAt"`) {
 		t.Fatalf("expected downloading filter URL preserving params, body=%s", body)
 	}
+	filterPattern := `(?s)data-filter="downloading"[^>]*hx-get="/ui/dashboard\?dir=desc&amp;filter=downloading&amp;selected=abc&amp;sort=addedAt"[^>]*hx-target="#dashboard"[^>]*hx-swap="outerHTML"`
+	filterMatched, err := regexp.MatchString(filterPattern, body)
+	if err != nil {
+		t.Fatalf("regexp error = %v", err)
+	}
+	if !filterMatched {
+		t.Fatalf("expected filter button to swap full dashboard, body=%s", body)
+	}
 	if !strings.Contains(body, `hx-get="/ui/dashboard?dir=asc&amp;filter=all&amp;selected=abc&amp;sort=addedAt"`) {
 		t.Fatalf("expected active sort toggle URL, body=%s", body)
 	}
+	sortPattern := `(?s)data-sort="addedAt"[^>]*hx-get="/ui/dashboard\?dir=asc&amp;filter=all&amp;selected=abc&amp;sort=addedAt"[^>]*hx-target="#dashboard"[^>]*hx-swap="outerHTML"`
+	sortMatched, err := regexp.MatchString(sortPattern, body)
+	if err != nil {
+		t.Fatalf("regexp error = %v", err)
+	}
+	if !sortMatched {
+		t.Fatalf("expected active sort button to swap full dashboard, body=%s", body)
+	}
 	if !strings.Contains(body, `hx-get="/ui/dashboard?dir=asc&amp;filter=all&amp;selected=abc&amp;sort=name"`) {
 		t.Fatalf("expected sort URL default direction for name, body=%s", body)
+	}
+	refreshPattern := `(?s)id="refresh"[^>]*hx-get="/ui/dashboard\?dir=desc&amp;filter=all&amp;selected=abc&amp;sort=addedAt"[^>]*hx-target="#dashboard"[^>]*hx-swap="outerHTML"`
+	refreshMatched, err := regexp.MatchString(refreshPattern, body)
+	if err != nil {
+		t.Fatalf("regexp error = %v", err)
+	}
+	if !refreshMatched {
+		t.Fatalf("expected refresh button to swap full dashboard, body=%s", body)
 	}
 }
 
