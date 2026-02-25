@@ -13,6 +13,7 @@ No Node.js or frontend build tooling is required. The UI is static HTML/CSS/JS s
 - Add torrents from magnet links
 - Add torrents from `.torrent` files
 - Remove torrents
+- Set global upload/download speed limits
 - Live table/stat updates over SSE
 - Works in modern Chrome and Firefox
 
@@ -80,6 +81,7 @@ Flags and env vars are both supported:
 - `GET /ui` (same shell as `/`)
 - `GET /ui/dashboard`
 - `POST /ui/torrents`
+- `POST /ui/speed-limits`
 - `POST /ui/torrents/{hash}/{action}` where action is `start`, `stop`, `recheck`, or `remove`
 - `GET /ui/stream` (SSE updates for table/stats fragments)
 

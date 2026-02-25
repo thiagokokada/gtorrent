@@ -6,6 +6,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/thiagokokada/gtorrent/internal/domain"
 )
 
 type mockRPC struct {
@@ -189,5 +191,195 @@ func TestBackendStatusTransitionsFromErrorToConnected(t *testing.T) {
 	}
 	if !strings.Contains(status.Message, "Connected successfully to rTorrent: /run/rtorrent/rpc.sock") {
 		t.Fatalf("unexpected backend success message: %q", status.Message)
+	}
+}
+
+func TestSetSpeedLimitsUsesPrimaryMethods(t *testing.T) {
+	rpc := &mockRPC{
+		fn: func(method string, args ...any) (any, error) {
+			if len(args) != 2 {
+				t.Fatalf("expected two arguments, got %d", len(args))
+			}
+			target, ok := args[0].(string)
+			if !ok {
+				t.Fatalf("expected string target argument, got %T", args[0])
+			}
+			if target != "" {
+				t.Fatalf("expected empty target argument, got %q", target)
+			}
+			value, ok := args[1].(int64)
+			if !ok {
+				t.Fatalf("expected int64 argument, got %T", args[1])
+			}
+
+			switch method {
+			case "throttle.global_down.max_rate.set_kb":
+				if value != 2048 {
+					t.Fatalf("unexpected download limit value: %d", value)
+				}
+				return nil, nil
+			case "throttle.global_up.max_rate.set_kb":
+				if value != 512 {
+					t.Fatalf("unexpected upload limit value: %d", value)
+				}
+				return nil, nil
+			default:
+				t.Fatalf("unexpected method: %s", method)
+			}
+			return nil, nil
+		},
+	}
+
+	client := NewClient(rpc)
+	err := client.SetSpeedLimits(context.Background(), domain.SpeedLimits{DownloadKiB: 2048, UploadKiB: 512})
+	if err != nil {
+		t.Fatalf("SetSpeedLimits() error = %v", err)
+	}
+	if len(rpc.calls) != 2 || rpc.calls[0] != "throttle.global_down.max_rate.set_kb" || rpc.calls[1] != "throttle.global_up.max_rate.set_kb" {
+		t.Fatalf("unexpected calls: %v", rpc.calls)
+	}
+}
+
+func TestSetSpeedLimitsFallsBackToLegacyMethods(t *testing.T) {
+	rpc := &mockRPC{
+		fn: func(method string, _ ...any) (any, error) {
+			switch method {
+			case "throttle.global_down.max_rate.set_kb", "throttle.global_up.max_rate.set_kb":
+				return nil, errors.New("unsupported")
+			case "throttle.global_down.max_rate.set", "throttle.global_up.max_rate.set":
+				return nil, nil
+			default:
+				t.Fatalf("unexpected method: %s", method)
+			}
+			return nil, nil
+		},
+	}
+
+	client := NewClient(rpc)
+	err := client.SetSpeedLimits(context.Background(), domain.SpeedLimits{DownloadKiB: 128, UploadKiB: 64})
+	if err != nil {
+		t.Fatalf("SetSpeedLimits() error = %v", err)
+	}
+	if len(rpc.calls) != 4 ||
+		rpc.calls[0] != "throttle.global_down.max_rate.set_kb" ||
+		rpc.calls[1] != "throttle.global_down.max_rate.set" ||
+		rpc.calls[2] != "throttle.global_up.max_rate.set_kb" ||
+		rpc.calls[3] != "throttle.global_up.max_rate.set" {
+		t.Fatalf("unexpected calls: %v", rpc.calls)
+	}
+}
+
+func TestSetSpeedLimitsFallsBackToLegacyMethodsWhenSetVariantsMissing(t *testing.T) {
+	rpc := &mockRPC{
+		fn: func(method string, _ ...any) (any, error) {
+			switch method {
+			case "throttle.global_down.max_rate.set_kb", "throttle.global_up.max_rate.set_kb":
+				return nil, errors.New("unsupported")
+			case "throttle.global_down.max_rate.set", "throttle.global_up.max_rate.set":
+				return nil, errors.New("unsupported")
+			case "set_download_rate", "set_upload_rate":
+				return nil, nil
+			default:
+				t.Fatalf("unexpected method: %s", method)
+			}
+			return nil, nil
+		},
+	}
+
+	client := NewClient(rpc)
+	err := client.SetSpeedLimits(context.Background(), domain.SpeedLimits{DownloadKiB: 128, UploadKiB: 64})
+	if err != nil {
+		t.Fatalf("SetSpeedLimits() error = %v", err)
+	}
+	if len(rpc.calls) != 6 ||
+		rpc.calls[0] != "throttle.global_down.max_rate.set_kb" ||
+		rpc.calls[1] != "throttle.global_down.max_rate.set" ||
+		rpc.calls[2] != "set_download_rate" ||
+		rpc.calls[3] != "throttle.global_up.max_rate.set_kb" ||
+		rpc.calls[4] != "throttle.global_up.max_rate.set" ||
+		rpc.calls[5] != "set_upload_rate" {
+		t.Fatalf("unexpected calls: %v", rpc.calls)
+	}
+}
+
+func TestSetSpeedLimitsRejectsNegativeValues(t *testing.T) {
+	rpc := &mockRPC{}
+	client := NewClient(rpc)
+
+	err := client.SetSpeedLimits(context.Background(), domain.SpeedLimits{DownloadKiB: -1, UploadKiB: 32})
+	if err == nil {
+		t.Fatalf("expected error")
+	}
+	if len(rpc.calls) != 0 {
+		t.Fatalf("expected no rpc calls, got %v", rpc.calls)
+	}
+}
+
+func TestGetSpeedLimitsUsesPrimaryMethods(t *testing.T) {
+	rpc := &mockRPC{
+		fn: func(method string, args ...any) (any, error) {
+			if len(args) != 0 {
+				t.Fatalf("expected no arguments, got %d", len(args))
+			}
+			switch method {
+			case "throttle.global_down.max_rate":
+				return int64(102400), nil
+			case "throttle.global_up.max_rate":
+				return int64(1024), nil
+			default:
+				t.Fatalf("unexpected method: %s", method)
+			}
+			return nil, nil
+		},
+	}
+
+	client := NewClient(rpc)
+	limits, err := client.GetSpeedLimits(context.Background())
+	if err != nil {
+		t.Fatalf("GetSpeedLimits() error = %v", err)
+	}
+	if limits.DownloadKiB != 100 || limits.UploadKiB != 1 {
+		t.Fatalf("unexpected limits: %+v", limits)
+	}
+	if len(rpc.calls) != 2 || rpc.calls[0] != "throttle.global_down.max_rate" || rpc.calls[1] != "throttle.global_up.max_rate" {
+		t.Fatalf("unexpected calls: %v", rpc.calls)
+	}
+}
+
+func TestGetSpeedLimitsFallsBackToLegacyMethods(t *testing.T) {
+	rpc := &mockRPC{
+		fn: func(method string, _ ...any) (any, error) {
+			switch method {
+			case "throttle.global_down.max_rate", "throttle.global_up.max_rate":
+				return nil, errors.New("unsupported")
+			case "throttle.global_down.max_rate.get_kb", "throttle.global_up.max_rate.get_kb":
+				return nil, errors.New("unsupported")
+			case "get_download_rate":
+				return int64(300), nil
+			case "get_upload_rate":
+				return int64(45), nil
+			default:
+				t.Fatalf("unexpected method: %s", method)
+			}
+			return nil, nil
+		},
+	}
+
+	client := NewClient(rpc)
+	limits, err := client.GetSpeedLimits(context.Background())
+	if err != nil {
+		t.Fatalf("GetSpeedLimits() error = %v", err)
+	}
+	if limits.DownloadKiB != 300 || limits.UploadKiB != 45 {
+		t.Fatalf("unexpected limits: %+v", limits)
+	}
+	if len(rpc.calls) != 6 ||
+		rpc.calls[0] != "throttle.global_down.max_rate" ||
+		rpc.calls[1] != "throttle.global_down.max_rate.get_kb" ||
+		rpc.calls[2] != "get_download_rate" ||
+		rpc.calls[3] != "throttle.global_up.max_rate" ||
+		rpc.calls[4] != "throttle.global_up.max_rate.get_kb" ||
+		rpc.calls[5] != "get_upload_rate" {
+		t.Fatalf("unexpected calls: %v", rpc.calls)
 	}
 }

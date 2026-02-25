@@ -14,14 +14,16 @@ import (
 )
 
 type mockService struct {
-	listFn          func(context.Context) ([]domain.Torrent, error)
-	addMagnetFn     func(context.Context, string) error
-	addFileFn       func(context.Context, []byte, string) error
-	removeFn        func(context.Context, string, bool) error
-	startFn         func(context.Context, string) error
-	stopFn          func(context.Context, string) error
-	recheckFn       func(context.Context, string) error
-	backendStatusFn func() domain.BackendStatus
+	listFn           func(context.Context) ([]domain.Torrent, error)
+	addMagnetFn      func(context.Context, string) error
+	addFileFn        func(context.Context, []byte, string) error
+	removeFn         func(context.Context, string, bool) error
+	startFn          func(context.Context, string) error
+	stopFn           func(context.Context, string) error
+	recheckFn        func(context.Context, string) error
+	setSpeedLimitsFn func(context.Context, domain.SpeedLimits) error
+	getSpeedLimitsFn func(context.Context) (domain.SpeedLimits, error)
+	backendStatusFn  func() domain.BackendStatus
 }
 
 type testFlusher struct{}
@@ -77,11 +79,25 @@ func (m *mockService) Recheck(ctx context.Context, hash string) error {
 	return m.recheckFn(ctx, hash)
 }
 
+func (m *mockService) SetSpeedLimits(ctx context.Context, limits domain.SpeedLimits) error {
+	if m.setSpeedLimitsFn == nil {
+		return nil
+	}
+	return m.setSpeedLimitsFn(ctx, limits)
+}
+
 func (m *mockService) BackendStatus() domain.BackendStatus {
 	if m.backendStatusFn == nil {
 		return domain.BackendStatus{}
 	}
 	return m.backendStatusFn()
+}
+
+func (m *mockService) GetSpeedLimits(ctx context.Context) (domain.SpeedLimits, error) {
+	if m.getSpeedLimitsFn == nil {
+		return domain.SpeedLimits{}, nil
+	}
+	return m.getSpeedLimitsFn(ctx)
 }
 
 func TestDashboardEndpointRendersTorrentRows(t *testing.T) {
@@ -143,6 +159,36 @@ func TestDashboardRendersFilterAndSortURLs(t *testing.T) {
 	}
 	if !strings.Contains(body, `hx-get="/ui/dashboard?dir=asc&amp;filter=all&amp;selected=abc&amp;sort=name"`) {
 		t.Fatalf("expected sort URL default direction for name, body=%s", body)
+	}
+}
+
+func TestDashboardRendersSpeedLimitInputs(t *testing.T) {
+	s, err := New(&mockService{
+		listFn: func(context.Context) ([]domain.Torrent, error) {
+			return nil, nil
+		},
+		getSpeedLimitsFn: func(context.Context) (domain.SpeedLimits, error) {
+			return domain.SpeedLimits{DownloadKiB: 2048, UploadKiB: 512}, nil
+		},
+	})
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/ui/dashboard", nil)
+	rr := httptest.NewRecorder()
+	s.Handler().ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d, body=%s", rr.Code, rr.Body.String())
+	}
+
+	body := rr.Body.String()
+	if !strings.Contains(body, `id="download-limit-kib"`) || !strings.Contains(body, `value="2048"`) {
+		t.Fatalf("expected download speed limit input value, body=%s", body)
+	}
+	if !strings.Contains(body, `id="upload-limit-kib"`) || !strings.Contains(body, `value="512"`) {
+		t.Fatalf("expected upload speed limit input value, body=%s", body)
 	}
 }
 
@@ -239,6 +285,74 @@ func TestAddTorrentMagnet(t *testing.T) {
 	}
 	if !strings.Contains(rr.Body.String(), "Torrent added") {
 		t.Fatalf("expected success flash, body=%s", rr.Body.String())
+	}
+}
+
+func TestSetSpeedLimits(t *testing.T) {
+	called := false
+	s, err := New(&mockService{
+		listFn: func(context.Context) ([]domain.Torrent, error) {
+			return nil, nil
+		},
+		setSpeedLimitsFn: func(_ context.Context, limits domain.SpeedLimits) error {
+			called = true
+			if limits.DownloadKiB != 2048 || limits.UploadKiB != 512 {
+				t.Fatalf("unexpected speed limits: %+v", limits)
+			}
+			return nil
+		},
+		getSpeedLimitsFn: func(context.Context) (domain.SpeedLimits, error) {
+			return domain.SpeedLimits{DownloadKiB: 2048, UploadKiB: 512}, nil
+		},
+	})
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/ui/speed-limits", strings.NewReader("downloadLimitKiB=2048&uploadLimitKiB=512&filter=all&sort=addedAt&dir=desc"))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	rr := httptest.NewRecorder()
+	s.Handler().ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d, body=%s", rr.Code, rr.Body.String())
+	}
+	if !called {
+		t.Fatalf("expected SetSpeedLimits call")
+	}
+	if !strings.Contains(rr.Body.String(), "Speed limits updated") {
+		t.Fatalf("expected success flash, body=%s", rr.Body.String())
+	}
+}
+
+func TestSetSpeedLimitsRejectsInvalidInput(t *testing.T) {
+	called := false
+	s, err := New(&mockService{
+		listFn: func(context.Context) ([]domain.Torrent, error) {
+			return nil, nil
+		},
+		setSpeedLimitsFn: func(_ context.Context, _ domain.SpeedLimits) error {
+			called = true
+			return nil
+		},
+	})
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/ui/speed-limits", strings.NewReader("downloadLimitKiB=-1&uploadLimitKiB=64"))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	rr := httptest.NewRecorder()
+	s.Handler().ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d, body=%s", rr.Code, rr.Body.String())
+	}
+	if called {
+		t.Fatalf("did not expect SetSpeedLimits call")
+	}
+	if !strings.Contains(rr.Body.String(), "download limit must be a non-negative integer") {
+		t.Fatalf("expected validation error, body=%s", rr.Body.String())
 	}
 }
 

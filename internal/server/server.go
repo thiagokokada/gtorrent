@@ -47,6 +47,8 @@ type Service interface {
 	Start(ctx context.Context, hash string) error
 	Stop(ctx context.Context, hash string) error
 	Recheck(ctx context.Context, hash string) error
+	GetSpeedLimits(ctx context.Context) (domain.SpeedLimits, error)
+	SetSpeedLimits(ctx context.Context, limits domain.SpeedLimits) error
 }
 
 type Server struct {
@@ -93,20 +95,22 @@ type torrentRow struct {
 }
 
 type dashboardView struct {
-	Params          viewParams
-	Torrents        []torrentRow
-	HasSelected     bool
-	SelectedHash    string
-	SelectedRunning bool
-	StatusKind      string
-	StatusMessage   string
-	VisibleCount    int
-	TotalDownRate   string
-	TotalUpRate     string
-	StreamURL       string
-	DashboardURL    string
-	FilterURLs      map[string]string
-	SortURLs        map[string]string
+	Params           viewParams
+	Torrents         []torrentRow
+	HasSelected      bool
+	SelectedHash     string
+	SelectedRunning  bool
+	DownloadLimitKiB int64
+	UploadLimitKiB   int64
+	StatusKind       string
+	StatusMessage    string
+	VisibleCount     int
+	TotalDownRate    string
+	TotalUpRate      string
+	StreamURL        string
+	DashboardURL     string
+	FilterURLs       map[string]string
+	SortURLs         map[string]string
 }
 
 type indexView struct {
@@ -155,6 +159,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/ui", s.handleUIPage)
 	mux.HandleFunc("/ui/dashboard", s.handleUIDashboard)
 	mux.HandleFunc("/ui/torrents", s.handleUIAddTorrent)
+	mux.HandleFunc("/ui/speed-limits", s.handleUISpeedLimits)
 	mux.HandleFunc("/ui/torrents/", s.handleUITorrentAction)
 	mux.HandleFunc("/ui/stream", s.handleUIStream)
 	mux.HandleFunc("/healthz", s.handleHealthz)
@@ -238,6 +243,31 @@ func (s *Server) handleUIAddTorrent(w http.ResponseWriter, r *http.Request) {
 	}
 
 	s.renderDashboard(w, r.Context(), params, flashMessage{Kind: "ok", Message: "Torrent added"})
+}
+
+func (s *Server) handleUISpeedLimits(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeMethodNotAllowed(w, http.MethodPost)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		s.renderDashboard(w, r.Context(), defaultViewParams(), flashMessage{Kind: "error", Message: "invalid form payload"})
+		return
+	}
+
+	params := parseViewParams(r.Form)
+	limits, err := parseSpeedLimits(r.Form)
+	if err != nil {
+		s.renderDashboard(w, r.Context(), params, flashMessage{Kind: "error", Message: err.Error()})
+		return
+	}
+
+	if err := s.svc.SetSpeedLimits(r.Context(), limits); err != nil {
+		s.renderDashboard(w, r.Context(), params, flashMessage{Kind: "error", Message: err.Error()})
+		return
+	}
+
+	s.renderDashboard(w, r.Context(), params, flashMessage{Kind: "ok", Message: "Speed limits updated"})
 }
 
 func (s *Server) handleUITorrentAction(w http.ResponseWriter, r *http.Request) {
@@ -356,17 +386,20 @@ func (s *Server) writeLiveUpdate(w io.Writer, flusher http.Flusher, ctx context.
 	if err != nil {
 		statusKind, statusMessage := statusFromBackendStatus(s.currentBackendStatus(err))
 		dashboardURL, filterURLs, sortURLs := controlURLs(params)
+		speedLimits := s.currentSpeedLimits(ctx)
 		fallback := dashboardView{
-			Params:        params,
-			StatusKind:    statusKind,
-			StatusMessage: statusMessage,
-			VisibleCount:  0,
-			TotalDownRate: "0 B/s",
-			TotalUpRate:   "0 B/s",
-			StreamURL:     streamURLForParams(params),
-			DashboardURL:  dashboardURL,
-			FilterURLs:    filterURLs,
-			SortURLs:      sortURLs,
+			Params:           params,
+			DownloadLimitKiB: speedLimits.DownloadKiB,
+			UploadLimitKiB:   speedLimits.UploadKiB,
+			StatusKind:       statusKind,
+			StatusMessage:    statusMessage,
+			VisibleCount:     0,
+			TotalDownRate:    "0 B/s",
+			TotalUpRate:      "0 B/s",
+			StreamURL:        streamURLForParams(params),
+			DashboardURL:     dashboardURL,
+			FilterURLs:       filterURLs,
+			SortURLs:         sortURLs,
 		}
 		statsHTML, renderErr := s.renderTemplateToString("stats", fallback)
 		if renderErr != nil {
@@ -462,17 +495,20 @@ func (s *Server) renderDashboard(w http.ResponseWriter, ctx context.Context, par
 	if err != nil {
 		statusKind, statusMessage := statusFromBackendStatus(s.currentBackendStatus(err))
 		dashboardURL, filterURLs, sortURLs := controlURLs(params)
+		speedLimits := s.currentSpeedLimits(ctx)
 		view = dashboardView{
-			Params:        params,
-			StatusKind:    statusKind,
-			StatusMessage: statusMessage,
-			VisibleCount:  0,
-			TotalDownRate: "0 B/s",
-			TotalUpRate:   "0 B/s",
-			StreamURL:     streamURLForParams(params),
-			DashboardURL:  dashboardURL,
-			FilterURLs:    filterURLs,
-			SortURLs:      sortURLs,
+			Params:           params,
+			DownloadLimitKiB: speedLimits.DownloadKiB,
+			UploadLimitKiB:   speedLimits.UploadKiB,
+			StatusKind:       statusKind,
+			StatusMessage:    statusMessage,
+			VisibleCount:     0,
+			TotalDownRate:    "0 B/s",
+			TotalUpRate:      "0 B/s",
+			StreamURL:        streamURLForParams(params),
+			DashboardURL:     dashboardURL,
+			FilterURLs:       filterURLs,
+			SortURLs:         sortURLs,
 		}
 	}
 	if strings.TrimSpace(flash.Message) != "" {
@@ -548,22 +584,25 @@ func (s *Server) buildDashboardView(ctx context.Context, params viewParams) (das
 	}
 
 	statusKind, statusMessage := statusFromBackendStatus(s.currentBackendStatus(nil))
+	speedLimits := s.currentSpeedLimits(ctx)
 	dashboardURL, filterURLs, sortURLs := controlURLs(params)
 	return dashboardView{
-		Params:          params,
-		Torrents:        rows,
-		HasSelected:     selectedHash != "",
-		SelectedHash:    selectedHash,
-		SelectedRunning: selectedRunning,
-		StatusKind:      statusKind,
-		StatusMessage:   statusMessage,
-		VisibleCount:    len(rows),
-		TotalDownRate:   formatRate(downTotal),
-		TotalUpRate:     formatRate(upTotal),
-		StreamURL:       streamURLForParams(params),
-		DashboardURL:    dashboardURL,
-		FilterURLs:      filterURLs,
-		SortURLs:        sortURLs,
+		Params:           params,
+		Torrents:         rows,
+		HasSelected:      selectedHash != "",
+		SelectedHash:     selectedHash,
+		SelectedRunning:  selectedRunning,
+		DownloadLimitKiB: speedLimits.DownloadKiB,
+		UploadLimitKiB:   speedLimits.UploadKiB,
+		StatusKind:       statusKind,
+		StatusMessage:    statusMessage,
+		VisibleCount:     len(rows),
+		TotalDownRate:    formatRate(downTotal),
+		TotalUpRate:      formatRate(upTotal),
+		StreamURL:        streamURLForParams(params),
+		DashboardURL:     dashboardURL,
+		FilterURLs:       filterURLs,
+		SortURLs:         sortURLs,
 	}, nil
 }
 
@@ -593,6 +632,21 @@ func (s *Server) currentBackendStatus(fallbackErr error) domain.BackendStatus {
 	}
 
 	return domain.BackendStatus{}
+}
+
+func (s *Server) currentSpeedLimits(ctx context.Context) domain.SpeedLimits {
+	limits, err := s.svc.GetSpeedLimits(ctx)
+	if err != nil {
+		slog.Warn("get speed limits failed", "error", err)
+		return domain.SpeedLimits{}
+	}
+	if limits.DownloadKiB < 0 {
+		limits.DownloadKiB = 0
+	}
+	if limits.UploadKiB < 0 {
+		limits.UploadKiB = 0
+	}
+	return limits
 }
 
 func statusFromBackendStatus(status domain.BackendStatus) (string, string) {
@@ -723,6 +777,36 @@ func parseViewParams(values url.Values) viewParams {
 		params.Selected = v
 	}
 	return params
+}
+
+func parseSpeedLimits(values url.Values) (domain.SpeedLimits, error) {
+	downloadKiB, err := parseNonNegativeInt64(values.Get("downloadLimitKiB"))
+	if err != nil {
+		return domain.SpeedLimits{}, errors.New("download limit must be a non-negative integer")
+	}
+	uploadKiB, err := parseNonNegativeInt64(values.Get("uploadLimitKiB"))
+	if err != nil {
+		return domain.SpeedLimits{}, errors.New("upload limit must be a non-negative integer")
+	}
+	return domain.SpeedLimits{
+		DownloadKiB: downloadKiB,
+		UploadKiB:   uploadKiB,
+	}, nil
+}
+
+func parseNonNegativeInt64(raw string) (int64, error) {
+	value := strings.TrimSpace(raw)
+	if value == "" {
+		return 0, nil
+	}
+	parsed, err := strconv.ParseInt(value, 10, 64)
+	if err != nil {
+		return 0, err
+	}
+	if parsed < 0 {
+		return 0, errors.New("negative value")
+	}
+	return parsed, nil
 }
 
 func defaultViewParams() viewParams {

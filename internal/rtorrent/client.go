@@ -24,6 +24,8 @@ type Service interface {
 	Start(ctx context.Context, hash string) error
 	Stop(ctx context.Context, hash string) error
 	Recheck(ctx context.Context, hash string) error
+	GetSpeedLimits(ctx context.Context) (domain.SpeedLimits, error)
+	SetSpeedLimits(ctx context.Context, limits domain.SpeedLimits) error
 }
 
 // Client is an rTorrent service backed by XML-RPC methods.
@@ -48,6 +50,101 @@ func (c *Client) BackendStatus() domain.BackendStatus {
 	c.statusMu.RLock()
 	defer c.statusMu.RUnlock()
 	return c.status
+}
+
+func (c *Client) GetSpeedLimits(ctx context.Context) (domain.SpeedLimits, error) {
+	downloadKiB, err := c.getSpeedLimitWithFallback(ctx, []rateReadMethod{
+		{name: "throttle.global_down.max_rate", bytesToKiB: true},
+		{name: "throttle.global_down.max_rate.get_kb"},
+		{name: "get_download_rate"},
+	})
+	if err != nil {
+		return domain.SpeedLimits{}, err
+	}
+	uploadKiB, err := c.getSpeedLimitWithFallback(ctx, []rateReadMethod{
+		{name: "throttle.global_up.max_rate", bytesToKiB: true},
+		{name: "throttle.global_up.max_rate.get_kb"},
+		{name: "get_upload_rate"},
+	})
+	if err != nil {
+		return domain.SpeedLimits{}, err
+	}
+	return domain.SpeedLimits{
+		DownloadKiB: downloadKiB,
+		UploadKiB:   uploadKiB,
+	}, nil
+}
+
+func (c *Client) SetSpeedLimits(ctx context.Context, limits domain.SpeedLimits) error {
+	if limits.DownloadKiB < 0 || limits.UploadKiB < 0 {
+		return errors.New("speed limits must be non-negative")
+	}
+
+	if err := c.setSpeedLimitWithFallback(ctx, []rpcMethodCall{
+		{name: "throttle.global_down.max_rate.set_kb", args: []any{"", limits.DownloadKiB}},
+		{name: "throttle.global_down.max_rate.set", args: []any{"", limits.DownloadKiB}},
+		{name: "set_download_rate", args: []any{limits.DownloadKiB}},
+	}); err != nil {
+		return err
+	}
+	if err := c.setSpeedLimitWithFallback(ctx, []rpcMethodCall{
+		{name: "throttle.global_up.max_rate.set_kb", args: []any{"", limits.UploadKiB}},
+		{name: "throttle.global_up.max_rate.set", args: []any{"", limits.UploadKiB}},
+		{name: "set_upload_rate", args: []any{limits.UploadKiB}},
+	}); err != nil {
+		return err
+	}
+
+	slog.Info("speed limits updated", "download_kib_s", limits.DownloadKiB, "upload_kib_s", limits.UploadKiB)
+	return nil
+}
+
+type rateReadMethod struct {
+	name       string
+	bytesToKiB bool
+}
+
+func (c *Client) getSpeedLimitWithFallback(ctx context.Context, methods []rateReadMethod) (int64, error) {
+	var lastErr error
+	for _, method := range methods {
+		result, err := c.rpc.Call(ctx, method.name)
+		if err == nil {
+			value := asInt64(result)
+			if method.bytesToKiB {
+				value = bytesToKiB(value)
+			}
+			if value < 0 {
+				return 0, nil
+			}
+			return value, nil
+		}
+		lastErr = err
+	}
+	return 0, fmt.Errorf("get speed limit failed: %w", lastErr)
+}
+
+func bytesToKiB(value int64) int64 {
+	if value <= 0 {
+		return 0
+	}
+	return (value + 512) / 1024
+}
+
+type rpcMethodCall struct {
+	name string
+	args []any
+}
+
+func (c *Client) setSpeedLimitWithFallback(ctx context.Context, methods []rpcMethodCall) error {
+	var lastErr error
+	for _, method := range methods {
+		_, err := c.rpc.Call(ctx, method.name, method.args...)
+		if err == nil {
+			return nil
+		}
+		lastErr = err
+	}
+	return fmt.Errorf("set speed limit failed: %w", lastErr)
 }
 
 func (c *Client) List(ctx context.Context) ([]domain.Torrent, error) {

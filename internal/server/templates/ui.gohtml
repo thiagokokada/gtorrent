@@ -80,6 +80,25 @@
           hx-swap="outerHTML">Stopped</button>
       </div>
     </div>
+    <div class="controls-divider"></div>
+    <div class="controls-section">
+      <div class="section-label">Speed Limits</div>
+      <form id="speed-limit-form" class="speed-limit-form" method="post"
+        hx-post="/ui/speed-limits"
+        hx-target="#dashboard"
+        hx-swap="outerHTML"
+        hx-include="#view-state">
+        <label class="speed-limit-field" for="download-limit-kib">
+          <span>Down KiB/s</span>
+          <input type="number" id="download-limit-kib" name="downloadLimitKiB" min="0" step="1" value="{{.DownloadLimitKiB}}">
+        </label>
+        <label class="speed-limit-field" for="upload-limit-kib">
+          <span>Up KiB/s</span>
+          <input type="number" id="upload-limit-kib" name="uploadLimitKiB" min="0" step="1" value="{{.UploadLimitKiB}}">
+        </label>
+        <button type="submit" class="secondary">Apply</button>
+      </form>
+    </div>
   </section>
 
   {{template "status" .}}

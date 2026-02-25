@@ -147,6 +147,40 @@ body.col-resizing {
   gap: 0.26rem;
 }
 
+.speed-limit-form {
+  display: flex;
+  align-items: flex-end;
+  gap: 0.3rem;
+  flex-wrap: wrap;
+}
+
+.speed-limit-field {
+  display: grid;
+  gap: 0.12rem;
+}
+
+.speed-limit-field span {
+  font-size: 0.62rem;
+  font-weight: 700;
+  color: #5b6d83;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  white-space: nowrap;
+}
+
+.speed-limit-field input[type="number"] {
+  width: 96px;
+  min-height: 25px;
+  height: 25px;
+  padding: 0 0.3rem;
+  border: 1px solid #a6b4c8;
+  border-radius: 4px;
+  background: #fff;
+  color: var(--text);
+  font: inherit;
+  font-size: 0.73rem;
+}
+
 button {
   min-height: 25px;
   border: 1px solid #335d87;
