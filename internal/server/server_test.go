@@ -445,6 +445,9 @@ func TestAddTorrentRequiresMagnetOrFileHTMXReturnsFragments(t *testing.T) {
 	if !strings.Contains(responseBody, `id="controls-panel" class="controls card" hx-swap-oob="outerHTML"`) {
 		t.Fatalf("expected controls fragment oob swap, body=%s", responseBody)
 	}
+	if strings.Contains(responseBody, `id="form-message"`) {
+		t.Fatalf("did not expect status fragment for add-form validation response, body=%s", responseBody)
+	}
 }
 
 func TestAddTorrentMagnetErrorShowsInlineFormError(t *testing.T) {

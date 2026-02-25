@@ -140,6 +140,10 @@ var (
 		Status:    true,
 		FileList:  true,
 	}
+	fragmentsControlsOnly = dashboardFragments{
+		ViewState: true,
+		Controls:  true,
+	}
 	fragmentsControlsAndStatus = dashboardFragments{
 		ViewState: true,
 		Controls:  true,
@@ -240,7 +244,7 @@ func (s *Server) handleUIAddTorrent(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := r.ParseMultipartForm(maxTorrentUploadBytes); err != nil {
-		s.renderDashboardResponse(w, r, r.Context(), defaultViewParams(), flashMessage{AddFormError: "invalid multipart payload"}, fragmentsControlsAndStatus)
+		s.renderDashboardResponse(w, r, r.Context(), defaultViewParams(), flashMessage{AddFormError: "invalid multipart payload"}, fragmentsControlsOnly)
 		return
 	}
 
@@ -249,7 +253,7 @@ func (s *Server) handleUIAddTorrent(w http.ResponseWriter, r *http.Request) {
 
 	if magnet != "" {
 		if err := s.svc.AddMagnet(r.Context(), magnet); err != nil {
-			s.renderDashboardResponse(w, r, r.Context(), params, flashMessage{AddFormError: err.Error(), AddFormMagnet: magnet}, fragmentsControlsAndStatus)
+			s.renderDashboardResponse(w, r, r.Context(), params, flashMessage{AddFormError: err.Error(), AddFormMagnet: magnet}, fragmentsControlsOnly)
 			return
 		}
 		s.renderDashboardResponse(w, r, r.Context(), params, flashMessage{Kind: "ok", Message: "Torrent added"}, fragmentsAll)
@@ -259,30 +263,30 @@ func (s *Server) handleUIAddTorrent(w http.ResponseWriter, r *http.Request) {
 	file, hdr, err := r.FormFile("torrent")
 	if err != nil {
 		if errors.Is(err, http.ErrMissingFile) {
-			s.renderDashboardResponse(w, r, r.Context(), params, flashMessage{AddFormError: "provide a magnet link or a .torrent file"}, fragmentsControlsAndStatus)
+			s.renderDashboardResponse(w, r, r.Context(), params, flashMessage{AddFormError: "provide a magnet link or a .torrent file"}, fragmentsControlsOnly)
 			return
 		}
-		s.renderDashboardResponse(w, r, r.Context(), params, flashMessage{AddFormError: "invalid torrent file"}, fragmentsControlsAndStatus)
+		s.renderDashboardResponse(w, r, r.Context(), params, flashMessage{AddFormError: "invalid torrent file"}, fragmentsControlsOnly)
 		return
 	}
 	defer file.Close()
 
 	data, err := io.ReadAll(io.LimitReader(file, maxTorrentUploadBytes+1))
 	if err != nil {
-		s.renderDashboardResponse(w, r, r.Context(), params, flashMessage{AddFormError: "failed to read torrent file"}, fragmentsControlsAndStatus)
+		s.renderDashboardResponse(w, r, r.Context(), params, flashMessage{AddFormError: "failed to read torrent file"}, fragmentsControlsOnly)
 		return
 	}
 	if len(data) == 0 {
-		s.renderDashboardResponse(w, r, r.Context(), params, flashMessage{AddFormError: "torrent file is empty"}, fragmentsControlsAndStatus)
+		s.renderDashboardResponse(w, r, r.Context(), params, flashMessage{AddFormError: "torrent file is empty"}, fragmentsControlsOnly)
 		return
 	}
 	if len(data) > maxTorrentUploadBytes {
-		s.renderDashboardResponse(w, r, r.Context(), params, flashMessage{AddFormError: "torrent file is too large"}, fragmentsControlsAndStatus)
+		s.renderDashboardResponse(w, r, r.Context(), params, flashMessage{AddFormError: "torrent file is too large"}, fragmentsControlsOnly)
 		return
 	}
 
 	if err := s.svc.AddTorrent(r.Context(), data, hdr.Filename); err != nil {
-		s.renderDashboardResponse(w, r, r.Context(), params, flashMessage{AddFormError: err.Error()}, fragmentsControlsAndStatus)
+		s.renderDashboardResponse(w, r, r.Context(), params, flashMessage{AddFormError: err.Error()}, fragmentsControlsOnly)
 		return
 	}
 
