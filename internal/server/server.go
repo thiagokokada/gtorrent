@@ -141,11 +141,9 @@ var (
 		FileList:  true,
 	}
 	fragmentsControlsOnly = dashboardFragments{
-		ViewState: true,
 		Controls:  true,
 	}
 	fragmentsControlsAndStatus = dashboardFragments{
-		ViewState: true,
 		Controls:  true,
 		Status:    true,
 	}
@@ -234,7 +232,11 @@ func (s *Server) handleUIDashboard(w http.ResponseWriter, r *http.Request) {
 	}
 
 	params := parseViewParams(r.URL.Query())
-	s.renderDashboardResponse(w, r, r.Context(), params, flashMessage{}, fragmentsAll)
+	fragments := fragmentsAll
+	if strings.TrimSpace(r.Header.Get("HX-Trigger")) == "cancel-add" {
+		fragments = fragmentsControlsOnly
+	}
+	s.renderDashboardResponse(w, r, r.Context(), params, flashMessage{}, fragments)
 }
 
 func (s *Server) handleUIAddTorrent(w http.ResponseWriter, r *http.Request) {

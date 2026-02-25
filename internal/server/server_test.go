@@ -259,6 +259,47 @@ func TestDashboardHTMXReturnsFragmentBundle(t *testing.T) {
 	}
 }
 
+func TestDashboardCancelAddHTMXReturnsControlsOnly(t *testing.T) {
+	s, err := New(&mockService{
+		listFn: func(context.Context) ([]domain.Torrent, error) {
+			return []domain.Torrent{{Hash: "abc", Name: "Ubuntu ISO", State: "downloading"}}, nil
+		},
+	})
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/ui/dashboard?selected=abc", nil)
+	req.Header.Set("HX-Request", "true")
+	req.Header.Set("HX-Target", "cancel-add")
+	req.Header.Set("HX-Trigger", "cancel-add")
+	rr := httptest.NewRecorder()
+	s.Handler().ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d, body=%s", rr.Code, rr.Body.String())
+	}
+	body := rr.Body.String()
+	if strings.Contains(body, `<section id="dashboard"`) {
+		t.Fatalf("did not expect full dashboard for htmx fragment request, body=%s", body)
+	}
+	if !strings.Contains(body, `id="controls-panel" class="controls card" hx-swap-oob="outerHTML"`) {
+		t.Fatalf("expected controls fragment oob swap, body=%s", body)
+	}
+	if strings.Contains(body, `id="file-list" class="table-panel card"`) {
+		t.Fatalf("did not expect file-list fragment for cancel-add, body=%s", body)
+	}
+	if strings.Contains(body, `id="form-message"`) {
+		t.Fatalf("did not expect status fragment for cancel-add, body=%s", body)
+	}
+	if strings.Contains(body, `id="global-stats" class="global-stats"`) {
+		t.Fatalf("did not expect stats fragment for cancel-add, body=%s", body)
+	}
+	if strings.Contains(body, `id="view-state" hidden`) {
+		t.Fatalf("did not expect view-state fragment for cancel-add, body=%s", body)
+	}
+}
+
 func TestUIPageHasCacheBustedUIScript(t *testing.T) {
 	s, err := New(&mockService{})
 	if err != nil {
@@ -448,6 +489,9 @@ func TestAddTorrentRequiresMagnetOrFileHTMXReturnsFragments(t *testing.T) {
 	if strings.Contains(responseBody, `id="form-message"`) {
 		t.Fatalf("did not expect status fragment for add-form validation response, body=%s", responseBody)
 	}
+	if strings.Contains(responseBody, `id="view-state" hidden`) {
+		t.Fatalf("did not expect view-state fragment for add-form validation response, body=%s", responseBody)
+	}
 }
 
 func TestAddTorrentMagnetErrorShowsInlineFormError(t *testing.T) {
@@ -582,6 +626,9 @@ func TestSetSpeedLimitsHTMXReturnsControlsAndStatusOnly(t *testing.T) {
 	}
 	if strings.Contains(body, `id="global-stats" class="global-stats"`) {
 		t.Fatalf("did not expect stats fragment for speed limit update, body=%s", body)
+	}
+	if strings.Contains(body, `id="view-state" hidden`) {
+		t.Fatalf("did not expect view-state fragment for speed limit update, body=%s", body)
 	}
 }
 
