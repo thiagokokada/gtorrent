@@ -133,6 +133,10 @@ type dashboardFragments struct {
 }
 
 var (
+	// Fragment presets for HTMX responses. Keep these aligned with AGENTS.md "UI Fragment Contract".
+	// - Add validation errors: controls
+	// - Speed limits: controls + status
+	// - Torrent actions and view navigation: all
 	fragmentsAll = dashboardFragments{
 		ViewState: true,
 		Stats:     true,
