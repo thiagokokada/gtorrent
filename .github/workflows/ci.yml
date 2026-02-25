@@ -1,0 +1,40 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+jobs:
+  go:
+    runs-on: ubuntu-latest
+    env:
+      CGO_ENABLED: "0"
+      GOCACHE: /tmp/go-cache
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Go vet
+        run: go vet ./...
+
+      - name: Go generate
+        run: go generate ./...
+
+      - name: Verify generated files are up to date
+        run: |
+          if ! git diff --quiet; then
+            echo "Generated files are out of date. Run: CGO_ENABLED=0 GOCACHE=/tmp/go-cache go generate ./..."
+            git --no-pager diff
+            exit 1
+          fi
+
+      - name: Go test
+        run: go test ./...
