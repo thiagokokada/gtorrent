@@ -35,14 +35,13 @@
     return "Connection error";
   }
 
-  function showMessage(kind, text) {
+  function showErrorMessage(text) {
     const box = messageBoxEl();
     const textEl = messageTextEl();
     if (!box || !textEl) {
       return;
     }
 
-    const normalizedKind = kind === "error" || kind === "ok" ? kind : "info";
     const normalizedText = String(text || "").trim();
     textEl.textContent = normalizedText;
     box.classList.remove("message-info", "message-ok", "message-error");
@@ -51,7 +50,7 @@
     } else {
       box.classList.remove("is-hidden");
     }
-    box.classList.add("message-" + normalizedKind);
+    box.classList.add("message-error");
   }
 
   function setConnectionState(state) {
@@ -79,61 +78,43 @@
   }
 
   document.body.addEventListener("htmx:sseOpen", function (event) {
-    if (event.target instanceof Element && event.target.closest("#dashboard")) {
+    if (event.target?.closest?.("#dashboard")) {
       setConnectionState("online");
     }
   });
 
   document.body.addEventListener("htmx:sseError", function (event) {
-    if (event.target instanceof Element && event.target.closest("#dashboard")) {
+    if (event.target?.closest?.("#dashboard")) {
       setConnectionState("offline");
-      showMessage("error", "Connection error: SSE stream disconnected");
+      showErrorMessage("Connection error: SSE stream disconnected");
     }
   });
 
   document.body.addEventListener("htmx:responseError", function (event) {
-    const target = event.detail && event.detail.target;
-    if (target && target.closest && target.closest("#dashboard")) {
+    const target = event.detail?.target;
+    if (target?.closest?.("#dashboard")) {
       setConnectionState("offline");
-      showMessage("error", requestErrorMessage(event));
+      showErrorMessage(requestErrorMessage(event));
     }
   });
 
   document.body.addEventListener("htmx:afterSwap", function (event) {
-    const target = event.detail && event.detail.target;
-    if (!target) {
-      return;
-    }
-
-    if (target.id === "dashboard") {
-      syncDashboard();
-      return;
-    }
-
-    if (target.closest && target.closest("#dashboard")) {
+    const target = event.detail?.target;
+    if (target?.id === "dashboard") {
       syncDashboard();
     }
   });
 
   document.addEventListener("input", function (event) {
-    if (!(event.target instanceof Element)) {
-      return;
-    }
-    if (event.target.id === "magnet") {
+    if (event.target?.id === "magnet") {
       syncAddButtonState();
     }
   });
 
   document.addEventListener("change", function (event) {
-    if (!(event.target instanceof Element)) {
-      return;
-    }
-    if (event.target.id === "torrent" || event.target.id === "magnet") {
+    if (event.target?.id === "torrent" || event.target?.id === "magnet") {
       syncAddButtonState();
     }
   });
 
-  document.addEventListener("DOMContentLoaded", function () {
-    syncDashboard();
-  });
 })();
