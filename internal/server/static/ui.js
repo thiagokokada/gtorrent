@@ -23,10 +23,6 @@
     dot.classList.add(state);
   }
 
-  function eventElement(event) {
-    return event.target instanceof Element ? event.target : null;
-  }
-
   function requestErrorMessage(event) {
     const detail = event.detail || {};
     const xhr = detail.xhr;
@@ -40,34 +36,25 @@
     return "Connection error";
   }
 
-  function messageToken(kind, text) {
-    const normalizedText = String(text || "").trim();
-    if (normalizedText === "") {
-      return "";
-    }
-    return kind + ":" + normalizedText;
-  }
-
-  function currentMessageKind() {
-    const box = messageBoxEl();
-    if (!box) {
-      return "info";
-    }
-    if (box.classList.contains("message-error")) {
-      return "error";
-    }
-    if (box.classList.contains("message-ok")) {
-      return "ok";
-    }
-    return "info";
-  }
-
   function currentMessageToken() {
+    const box = messageBoxEl();
     const textEl = messageTextEl();
-    if (!textEl) {
+    if (!box || !textEl) {
       return "";
     }
-    return messageToken(currentMessageKind(), textEl.textContent.trim());
+
+    const text = textEl.textContent.trim();
+    if (text === "") {
+      return "";
+    }
+
+    let kind = "info";
+    if (box.classList.contains("message-error")) {
+      kind = "error";
+    } else if (box.classList.contains("message-ok")) {
+      kind = "ok";
+    }
+    return kind + ":" + text;
   }
 
   function applyDismissedMessage() {
@@ -111,18 +98,32 @@
     setConnectionDot(connectionState);
   }
 
-  function syncDashboard() {
-    setConnectionDot(connectionState);
-    applyDismissedMessage();
-  }
-
-  document.addEventListener("click", function (event) {
-    const target = eventElement(event);
-    if (!target) {
+  function syncAddButtonState() {
+    const addBtn = document.querySelector("#add-btn");
+    if (!(addBtn instanceof HTMLButtonElement)) {
       return;
     }
 
-    if (target.closest("#form-message-close")) {
+    const magnetInput = document.querySelector("#magnet");
+    const fileInput = document.querySelector("#torrent");
+    const hasMagnet = magnetInput instanceof HTMLInputElement && magnetInput.value.trim() !== "";
+    const hasFile = fileInput instanceof HTMLInputElement && fileInput.files && fileInput.files.length > 0;
+
+    addBtn.disabled = !(hasMagnet || hasFile);
+  }
+
+  function syncDashboard() {
+    setConnectionDot(connectionState);
+    applyDismissedMessage();
+    syncAddButtonState();
+  }
+
+  document.addEventListener("click", function (event) {
+    if (!(event.target instanceof Element)) {
+      return;
+    }
+
+    if (event.target.closest("#form-message-close")) {
       dismissedMessageToken = currentMessageToken();
       const box = messageBoxEl();
       if (box) {
@@ -131,44 +132,21 @@
     }
   });
 
-  document.addEventListener("submit", function (event) {
-    const form = event.target;
-    if (!(form instanceof HTMLFormElement) || form.id !== "add-form") {
-      return;
-    }
-
-    const magnetInput = form.querySelector("#magnet");
-    const magnet = magnetInput instanceof HTMLInputElement ? magnetInput.value : "";
-    const fileInput = form.querySelector("#torrent");
-    const hasFile = fileInput && fileInput.files && fileInput.files.length > 0;
-
-    if (magnet.trim() !== "" || hasFile) {
-      return;
-    }
-
-    event.preventDefault();
-    dismissedMessageToken = "";
-    showMessage("error", "provide a magnet link or a .torrent file");
-  });
-
   document.body.addEventListener("htmx:sseOpen", function (event) {
-    const target = eventElement(event);
-    if (target && target.closest("#dashboard")) {
+    if (event.target instanceof Element && event.target.closest("#dashboard")) {
       setConnectionState("online");
     }
   });
 
   document.body.addEventListener("htmx:sseError", function (event) {
-    const target = eventElement(event);
-    if (target && target.closest("#dashboard")) {
+    if (event.target instanceof Element && event.target.closest("#dashboard")) {
       setConnectionState("offline");
       showMessage("error", "Connection error: SSE stream disconnected");
     }
   });
 
   document.body.addEventListener("htmx:sseClose", function (event) {
-    const target = eventElement(event);
-    if (target && target.closest("#dashboard")) {
+    if (event.target instanceof Element && event.target.closest("#dashboard")) {
       setConnectionState("offline");
       showMessage("error", "Connection error: SSE stream closed");
     }
@@ -207,6 +185,24 @@
 
     if (target.closest && target.closest("#dashboard")) {
       syncDashboard();
+    }
+  });
+
+  document.addEventListener("input", function (event) {
+    if (!(event.target instanceof Element)) {
+      return;
+    }
+    if (event.target.id === "magnet") {
+      syncAddButtonState();
+    }
+  });
+
+  document.addEventListener("change", function (event) {
+    if (!(event.target instanceof Element)) {
+      return;
+    }
+    if (event.target.id === "torrent" || event.target.id === "magnet") {
+      syncAddButtonState();
     }
   });
 

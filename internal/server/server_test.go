@@ -108,6 +108,9 @@ func TestDashboardEndpointRendersTorrentRows(t *testing.T) {
 	if !strings.Contains(body, "id=\"toggle-selected\"") {
 		t.Fatalf("expected top-bar action buttons, body=%s", body)
 	}
+	if !strings.Contains(body, `id="add-btn" class="primary" disabled`) {
+		t.Fatalf("expected add button disabled by default in add dialog, body=%s", body)
+	}
 	if !strings.Contains(body, "data-hash=\"abc\"") || !strings.Contains(body, `hx-get="/ui/dashboard?dir=desc&amp;filter=all&amp;selected=abc&amp;sort=addedAt"`) {
 		t.Fatalf("expected selectable row URL, body=%s", body)
 	}
