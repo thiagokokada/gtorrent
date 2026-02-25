@@ -3,7 +3,6 @@
 
   let connectionState = "connecting";
   let dismissedMessageToken = "";
-  let messageHideTimer = 0;
 
   function messageBoxEl() {
     return document.querySelector("#form-message");
@@ -42,14 +41,11 @@
   }
 
   function messageToken(kind, text) {
-    return kind + ":" + text;
-  }
-
-  function clearMessageHideTimer() {
-    if (messageHideTimer !== 0) {
-      window.clearTimeout(messageHideTimer);
-      messageHideTimer = 0;
+    const normalizedText = String(text || "").trim();
+    if (normalizedText === "") {
+      return "";
     }
+    return kind + ":" + normalizedText;
   }
 
   function currentMessageKind() {
@@ -64,23 +60,6 @@
       return "ok";
     }
     return "info";
-  }
-
-  function scheduleAutoHide(token, kind) {
-    clearMessageHideTimer();
-    if (kind === "error") {
-      return;
-    }
-    messageHideTimer = window.setTimeout(function () {
-      if (currentMessageToken() !== token) {
-        return;
-      }
-      dismissedMessageToken = token;
-      const box = messageBoxEl();
-      if (box) {
-        box.classList.add("is-hidden");
-      }
-    }, 4500);
   }
 
   function currentMessageToken() {
@@ -98,14 +77,17 @@
     }
 
     const token = currentMessageToken();
+    if (token === "") {
+      box.classList.add("is-hidden");
+      return;
+    }
+
     if (token !== "" && token === dismissedMessageToken) {
-      clearMessageHideTimer();
       box.classList.add("is-hidden");
       return;
     }
 
     box.classList.remove("is-hidden");
-    scheduleAutoHide(token, currentMessageKind());
   }
 
   function showMessage(kind, text) {
@@ -142,7 +124,6 @@
 
     if (target.closest("#form-message-close")) {
       dismissedMessageToken = currentMessageToken();
-      clearMessageHideTimer();
       const box = messageBoxEl();
       if (box) {
         box.classList.add("is-hidden");
@@ -223,6 +204,11 @@
     }
 
     if (target.id === "dashboard") {
+      syncDashboard();
+      return;
+    }
+
+    if (target.closest && target.closest("#dashboard")) {
       syncDashboard();
     }
   });

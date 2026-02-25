@@ -146,7 +146,9 @@
 {{end}}
 
 {{define "status"}}
-<div id="form-message" class="message status-message message-{{.StatusKind}}" sse-swap="status" hx-swap="outerHTML" role="status" aria-live="polite">
+{{$statusKind := .StatusKind}}
+{{if eq $statusKind ""}}{{$statusKind = "info"}}{{end}}
+<div id="form-message" class="message status-message message-{{$statusKind}}{{if eq .StatusMessage ""}} is-hidden{{end}}" sse-swap="status" hx-swap="outerHTML" role="status" aria-live="polite">
   <span id="form-message-text">{{.StatusMessage}}</span>
   <button type="button" id="form-message-close" class="message-close" aria-label="Dismiss message">x</button>
 </div>

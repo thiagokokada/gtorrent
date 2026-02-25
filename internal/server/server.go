@@ -599,18 +599,11 @@ func statusFromBackendStatus(status domain.BackendStatus) (string, string) {
 	kind := strings.TrimSpace(status.Kind)
 	message := strings.TrimSpace(status.Message)
 
-	switch kind {
-	case "error":
-		if message != "" {
-			return "error", message
-		}
-	case "ok":
-		if message != "" {
-			return "ok", message
-		}
+	if kind == "error" && message != "" {
+		return "error", message
 	}
 
-	return "ok", "Connected"
+	return "", ""
 }
 
 func filterTorrents(items []domain.Torrent, params viewParams) []domain.Torrent {

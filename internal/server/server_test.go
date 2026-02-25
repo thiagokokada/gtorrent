@@ -317,8 +317,8 @@ func TestUIStreamEndpoint(t *testing.T) {
 
 func TestWriteLiveUpdateDeduplicatesStatusEvent(t *testing.T) {
 	status := domain.BackendStatus{
-		Kind:    "ok",
-		Message: "Connected successfully to rTorrent: /run/rtorrent/rpc.sock",
+		Kind:    "error",
+		Message: "Error talking to rTorrent (/run/rtorrent/rpc.sock): dial unix socket: no such file or directory",
 	}
 	s, err := New(&mockService{
 		listFn: func(context.Context) ([]domain.Torrent, error) {
@@ -350,7 +350,7 @@ func TestWriteLiveUpdateDeduplicatesStatusEvent(t *testing.T) {
 
 	status = domain.BackendStatus{
 		Kind:    "error",
-		Message: "Error talking to rTorrent (/run/rtorrent/rpc.sock): dial unix socket: no such file or directory",
+		Message: "Error talking to rTorrent (/run/rtorrent/rpc.sock): dial unix socket: connection refused",
 	}
 	if err := s.writeLiveUpdate(&body, testFlusher{}, context.Background(), defaultViewParams(), &lastKind, &lastMessage); err != nil {
 		t.Fatalf("third writeLiveUpdate() error = %v", err)
@@ -381,7 +381,7 @@ func TestAPIRoutesRemoved(t *testing.T) {
 	}
 }
 
-func TestDashboardRendersBackendStatus(t *testing.T) {
+func TestDashboardHidesSteadyBackendOKStatus(t *testing.T) {
 	s, err := New(&mockService{
 		listFn: func(context.Context) ([]domain.Torrent, error) {
 			return nil, nil
@@ -408,10 +408,10 @@ func TestDashboardRendersBackendStatus(t *testing.T) {
 	if !strings.Contains(body, `id="form-message"`) {
 		t.Fatalf("expected status bar in dashboard, body=%s", body)
 	}
-	if !strings.Contains(body, "message-ok") {
-		t.Fatalf("expected ok status class in status bar, body=%s", body)
+	if !strings.Contains(body, "message-info is-hidden") {
+		t.Fatalf("expected steady backend ok status to be hidden, body=%s", body)
 	}
-	if !strings.Contains(body, "Connected successfully to rTorrent: /run/rtorrent/rpc.sock") {
-		t.Fatalf("expected backend status message in status bar, body=%s", body)
+	if strings.Contains(body, "Connected successfully to rTorrent: /run/rtorrent/rpc.sock") {
+		t.Fatalf("expected no steady backend ok message in status bar, body=%s", body)
 	}
 }
