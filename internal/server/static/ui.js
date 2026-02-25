@@ -162,7 +162,6 @@
     const target = eventElement(event);
     if (target && target.closest("#dashboard")) {
       setConnectionState("offline");
-      dismissedMessageToken = "";
       showMessage("error", "Connection error: SSE stream disconnected");
     }
   });
@@ -171,7 +170,6 @@
     const target = eventElement(event);
     if (target && target.closest("#dashboard")) {
       setConnectionState("offline");
-      dismissedMessageToken = "";
       showMessage("error", "Connection error: SSE stream closed");
     }
   });
@@ -180,7 +178,6 @@
     const target = event.detail && event.detail.target;
     if (target && target.closest && target.closest("#dashboard")) {
       setConnectionState("offline");
-      dismissedMessageToken = "";
       showMessage("error", requestErrorMessage(event));
     }
   });
