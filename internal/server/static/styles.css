@@ -75,10 +75,6 @@ body.col-resizing {
   box-shadow: 0 0 0 2px #204567;
 }
 
-.brand-dot.connecting {
-  background: linear-gradient(180deg, #f5d47c 0%, #c78e32 100%);
-}
-
 .brand-dot.online {
   background: linear-gradient(180deg, #78dc9b 0%, #23914e 100%);
 }

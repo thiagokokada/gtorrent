@@ -1,7 +1,7 @@
 (function () {
-  const CONNECTION_STATES = ["connecting", "online", "offline"];
+  const CONNECTION_STATES = ["online", "offline"];
 
-  let connectionState = "connecting";
+  let connectionState = "offline";
 
   function messageBoxEl() {
     return document.querySelector("#form-message");
@@ -99,25 +99,11 @@
     }
   });
 
-  document.body.addEventListener("htmx:sseClose", function (event) {
-    if (event.target instanceof Element && event.target.closest("#dashboard")) {
-      setConnectionState("offline");
-      showMessage("error", "Connection error: SSE stream closed");
-    }
-  });
-
   document.body.addEventListener("htmx:responseError", function (event) {
     const target = event.detail && event.detail.target;
     if (target && target.closest && target.closest("#dashboard")) {
       setConnectionState("offline");
       showMessage("error", requestErrorMessage(event));
-    }
-  });
-
-  document.body.addEventListener("htmx:beforeRequest", function (event) {
-    const target = event.detail && event.detail.target;
-    if (target && target.closest && target.closest("#dashboard")) {
-      setConnectionState("connecting");
     }
   });
 
