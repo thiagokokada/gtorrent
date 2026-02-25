@@ -47,6 +47,9 @@ func main() {
 		os.Exit(1)
 	}
 
+	serverCtx, cancelServerCtx := context.WithCancel(context.Background())
+	defer cancelServerCtx()
+
 	httpServer := &http.Server{
 		Addr:              cfg.ListenAddr,
 		Handler:           srv.Handler(),
@@ -55,6 +58,9 @@ func main() {
 		// WriteTimeout must be unset for long-lived SSE responses.
 		WriteTimeout: 0,
 		IdleTimeout:  60 * time.Second,
+		BaseContext: func(net.Listener) context.Context {
+			return serverCtx
+		},
 	}
 
 	go func() {
@@ -78,6 +84,7 @@ func main() {
 	defer stop()
 	<-ctx.Done()
 
+	cancelServerCtx()
 	srv.ShutdownStreams()
 
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
