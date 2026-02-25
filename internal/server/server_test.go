@@ -131,13 +131,13 @@ func TestDashboardEndpointRendersTorrentRows(t *testing.T) {
 	if !strings.Contains(body, "data-hash=\"abc\"") || !strings.Contains(body, `hx-get="/ui/dashboard?dir=desc&amp;filter=all&amp;selected=abc&amp;sort=addedAt"`) {
 		t.Fatalf("expected selectable row URL, body=%s", body)
 	}
-	rowSelectPattern := `(?s)<tr data-hash="abc" class="".*hx-get="/ui/dashboard\?dir=desc&amp;filter=all&amp;selected=abc&amp;sort=addedAt".*hx-target="#dashboard".*hx-swap="outerHTML"`
+	rowSelectPattern := `(?s)<tr data-hash="abc" class="".*hx-get="/ui/dashboard\?dir=desc&amp;filter=all&amp;selected=abc&amp;sort=addedAt".*hx-swap="none"`
 	matched, err := regexp.MatchString(rowSelectPattern, body)
 	if err != nil {
 		t.Fatalf("regexp error = %v", err)
 	}
 	if !matched {
-		t.Fatalf("expected row selection to swap full dashboard, body=%s", body)
+		t.Fatalf("expected row selection to use fragment mode, body=%s", body)
 	}
 }
 
