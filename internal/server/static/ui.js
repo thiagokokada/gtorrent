@@ -58,25 +58,6 @@
     setConnectionDot(connectionState);
   }
 
-  function syncAddButtonState() {
-    const addBtn = document.querySelector("#add-btn");
-    if (!(addBtn instanceof HTMLButtonElement)) {
-      return;
-    }
-
-    const magnetInput = document.querySelector("#magnet");
-    const fileInput = document.querySelector("#torrent");
-    const hasMagnet = magnetInput instanceof HTMLInputElement && magnetInput.value.trim() !== "";
-    const hasFile = fileInput instanceof HTMLInputElement && fileInput.files && fileInput.files.length > 0;
-
-    addBtn.disabled = !(hasMagnet || hasFile);
-  }
-
-  function syncDashboard() {
-    setConnectionDot(connectionState);
-    syncAddButtonState();
-  }
-
   document.body.addEventListener("htmx:sseOpen", function (event) {
     if (event.target?.closest?.("#dashboard")) {
       setConnectionState("online");
@@ -101,19 +82,11 @@
   document.body.addEventListener("htmx:afterSwap", function (event) {
     const target = event.detail?.target;
     if (target?.id === "dashboard") {
-      syncDashboard();
-    }
-  });
-
-  document.addEventListener("input", function (event) {
-    if (event.target?.id === "magnet") {
-      syncAddButtonState();
-    }
-  });
-
-  document.addEventListener("change", function (event) {
-    if (event.target?.id === "torrent" || event.target?.id === "magnet") {
-      syncAddButtonState();
+      setConnectionDot(connectionState);
+      const addDialog = document.querySelector("#add-dialog[data-open-on-load]");
+      if (addDialog instanceof HTMLDialogElement && !addDialog.open) {
+        addDialog.showModal();
+      }
     }
   });
 

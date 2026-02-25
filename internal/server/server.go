@@ -70,8 +70,10 @@ type viewParams struct {
 }
 
 type flashMessage struct {
-	Kind    string
-	Message string
+	Kind          string
+	Message       string
+	AddFormError  string
+	AddFormMagnet string
 }
 
 type torrentRow struct {
@@ -111,6 +113,9 @@ type dashboardView struct {
 	DashboardURL     string
 	FilterURLs       map[string]string
 	SortURLs         map[string]string
+	OpenAddDialog    bool
+	AddFormError     string
+	AddFormMagnet    string
 }
 
 type indexView struct {
@@ -210,7 +215,7 @@ func (s *Server) handleUIAddTorrent(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := r.ParseMultipartForm(maxTorrentUploadBytes); err != nil {
-		s.renderDashboard(w, r.Context(), defaultViewParams(), flashMessage{Kind: "error", Message: "invalid multipart payload"})
+		s.renderDashboard(w, r.Context(), defaultViewParams(), flashMessage{AddFormError: "invalid multipart payload"})
 		return
 	}
 
@@ -219,7 +224,7 @@ func (s *Server) handleUIAddTorrent(w http.ResponseWriter, r *http.Request) {
 
 	if magnet != "" {
 		if err := s.svc.AddMagnet(r.Context(), magnet); err != nil {
-			s.renderDashboard(w, r.Context(), params, flashMessage{Kind: "error", Message: err.Error()})
+			s.renderDashboard(w, r.Context(), params, flashMessage{AddFormError: err.Error(), AddFormMagnet: magnet})
 			return
 		}
 		s.renderDashboard(w, r.Context(), params, flashMessage{Kind: "ok", Message: "Torrent added"})
@@ -229,30 +234,30 @@ func (s *Server) handleUIAddTorrent(w http.ResponseWriter, r *http.Request) {
 	file, hdr, err := r.FormFile("torrent")
 	if err != nil {
 		if errors.Is(err, http.ErrMissingFile) {
-			s.renderDashboard(w, r.Context(), params, flashMessage{Kind: "error", Message: "provide a magnet link or a .torrent file"})
+			s.renderDashboard(w, r.Context(), params, flashMessage{AddFormError: "provide a magnet link or a .torrent file"})
 			return
 		}
-		s.renderDashboard(w, r.Context(), params, flashMessage{Kind: "error", Message: "invalid torrent file"})
+		s.renderDashboard(w, r.Context(), params, flashMessage{AddFormError: "invalid torrent file"})
 		return
 	}
 	defer file.Close()
 
 	data, err := io.ReadAll(io.LimitReader(file, maxTorrentUploadBytes+1))
 	if err != nil {
-		s.renderDashboard(w, r.Context(), params, flashMessage{Kind: "error", Message: "failed to read torrent file"})
+		s.renderDashboard(w, r.Context(), params, flashMessage{AddFormError: "failed to read torrent file"})
 		return
 	}
 	if len(data) == 0 {
-		s.renderDashboard(w, r.Context(), params, flashMessage{Kind: "error", Message: "torrent file is empty"})
+		s.renderDashboard(w, r.Context(), params, flashMessage{AddFormError: "torrent file is empty"})
 		return
 	}
 	if len(data) > maxTorrentUploadBytes {
-		s.renderDashboard(w, r.Context(), params, flashMessage{Kind: "error", Message: "torrent file is too large"})
+		s.renderDashboard(w, r.Context(), params, flashMessage{AddFormError: "torrent file is too large"})
 		return
 	}
 
 	if err := s.svc.AddTorrent(r.Context(), data, hdr.Filename); err != nil {
-		s.renderDashboard(w, r.Context(), params, flashMessage{Kind: "error", Message: err.Error()})
+		s.renderDashboard(w, r.Context(), params, flashMessage{AddFormError: err.Error()})
 		return
 	}
 
@@ -533,6 +538,11 @@ func (s *Server) renderDashboard(w http.ResponseWriter, ctx context.Context, par
 		default:
 			view.StatusKind = "info"
 		}
+	}
+	if strings.TrimSpace(flash.AddFormError) != "" {
+		view.OpenAddDialog = true
+		view.AddFormError = strings.TrimSpace(flash.AddFormError)
+		view.AddFormMagnet = strings.TrimSpace(flash.AddFormMagnet)
 	}
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")

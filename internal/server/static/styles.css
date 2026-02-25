@@ -497,6 +497,17 @@ progress::-moz-progress-bar {
   font-size: 0.95rem;
 }
 
+.add-form-error {
+  margin: 0;
+  padding: 0.35rem 0.45rem;
+  border: 1px solid #d4a2a2;
+  border-radius: 4px;
+  background: #f7dfdf;
+  color: #7a2b2b;
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
 .field {
   display: grid;
   gap: 0.2rem;

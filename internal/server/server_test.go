@@ -3,6 +3,7 @@ package server
 import (
 	"bytes"
 	"context"
+	"errors"
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
@@ -124,8 +125,8 @@ func TestDashboardEndpointRendersTorrentRows(t *testing.T) {
 	if !strings.Contains(body, "id=\"toggle-selected\"") {
 		t.Fatalf("expected top-bar action buttons, body=%s", body)
 	}
-	if !strings.Contains(body, `id="add-btn" class="primary" disabled`) {
-		t.Fatalf("expected add button disabled by default in add dialog, body=%s", body)
+	if !strings.Contains(body, `id="add-btn" class="primary">Add</button>`) {
+		t.Fatalf("expected add button enabled by default in add dialog, body=%s", body)
 	}
 	if !strings.Contains(body, "data-hash=\"abc\"") || !strings.Contains(body, `hx-get="/ui/dashboard?dir=desc&amp;filter=all&amp;selected=abc&amp;sort=addedAt"`) {
 		t.Fatalf("expected selectable row URL, body=%s", body)
@@ -307,6 +308,98 @@ func TestAddTorrentMagnet(t *testing.T) {
 	}
 	if !strings.Contains(rr.Body.String(), "Torrent added") {
 		t.Fatalf("expected success flash, body=%s", rr.Body.String())
+	}
+}
+
+func TestAddTorrentRequiresMagnetOrFile(t *testing.T) {
+	called := false
+	s, err := New(&mockService{
+		listFn: func(context.Context) ([]domain.Torrent, error) {
+			return nil, nil
+		},
+		addMagnetFn: func(context.Context, string) error {
+			called = true
+			return nil
+		},
+		addFileFn: func(context.Context, []byte, string) error {
+			called = true
+			return nil
+		},
+	})
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+
+	var body bytes.Buffer
+	writer := multipart.NewWriter(&body)
+	_ = writer.WriteField("filter", "all")
+	_ = writer.Close()
+
+	req := httptest.NewRequest(http.MethodPost, "/ui/torrents", &body)
+	req.Header.Set("Content-Type", writer.FormDataContentType())
+	rr := httptest.NewRecorder()
+	s.Handler().ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d, body=%s", rr.Code, rr.Body.String())
+	}
+	if called {
+		t.Fatalf("did not expect AddMagnet or AddTorrent call")
+	}
+	responseBody := rr.Body.String()
+	if !strings.Contains(responseBody, "provide a magnet link or a .torrent file") {
+		t.Fatalf("expected missing input error, body=%s", responseBody)
+	}
+	if !strings.Contains(responseBody, `class="add-form-error"`) {
+		t.Fatalf("expected inline add form error, body=%s", responseBody)
+	}
+	if !strings.Contains(responseBody, `<dialog id="add-dialog" class="add-dialog" data-open-on-load="true">`) {
+		t.Fatalf("expected add dialog to request modal reopen, body=%s", responseBody)
+	}
+	if strings.Contains(responseBody, `<span id="form-message-text">provide a magnet link or a .torrent file</span>`) {
+		t.Fatalf("did not expect global status message for add form validation error, body=%s", responseBody)
+	}
+}
+
+func TestAddTorrentMagnetErrorShowsInlineFormError(t *testing.T) {
+	s, err := New(&mockService{
+		listFn: func(context.Context) ([]domain.Torrent, error) {
+			return nil, nil
+		},
+		addMagnetFn: func(context.Context, string) error {
+			return errors.New("invalid magnet URI")
+		},
+	})
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+
+	var body bytes.Buffer
+	writer := multipart.NewWriter(&body)
+	_ = writer.WriteField("magnet", "magnet:?xt=urn:btih:invalid")
+	_ = writer.WriteField("filter", "all")
+	_ = writer.Close()
+
+	req := httptest.NewRequest(http.MethodPost, "/ui/torrents", &body)
+	req.Header.Set("Content-Type", writer.FormDataContentType())
+	rr := httptest.NewRecorder()
+	s.Handler().ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d, body=%s", rr.Code, rr.Body.String())
+	}
+	responseBody := rr.Body.String()
+	if !strings.Contains(responseBody, "invalid magnet URI") {
+		t.Fatalf("expected magnet error message, body=%s", responseBody)
+	}
+	if !strings.Contains(responseBody, `class="add-form-error"`) {
+		t.Fatalf("expected inline add form error, body=%s", responseBody)
+	}
+	if !strings.Contains(responseBody, `<dialog id="add-dialog" class="add-dialog" data-open-on-load="true">`) {
+		t.Fatalf("expected add dialog to request modal reopen, body=%s", responseBody)
+	}
+	if !strings.Contains(responseBody, `name="magnet" placeholder="magnet:?xt=urn:btih:..." value="magnet:?xt=urn:btih:invalid"`) {
+		t.Fatalf("expected magnet field value to be preserved, body=%s", responseBody)
 	}
 }
 

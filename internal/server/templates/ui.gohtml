@@ -139,7 +139,7 @@
     </div>
   </section>
 
-  <dialog id="add-dialog" class="add-dialog">
+  <dialog id="add-dialog" class="add-dialog"{{if .OpenAddDialog}} data-open-on-load="true"{{end}}>
     <form id="add-form" class="add-form" method="post"
       hx-post="/ui/torrents"
       hx-target="#dashboard"
@@ -147,17 +147,24 @@
       hx-encoding="multipart/form-data"
       hx-include="#view-state">
       <h2>Add Torrent</h2>
+      {{if .AddFormError}}
+      <p class="add-form-error" role="alert">{{.AddFormError}}</p>
+      {{end}}
       <label class="field" for="magnet">
         <span>Magnet</span>
-        <input type="url" id="magnet" name="magnet" placeholder="magnet:?xt=urn:btih:...">
+        <input type="url" id="magnet" name="magnet" placeholder="magnet:?xt=urn:btih:..." value="{{.AddFormMagnet}}">
       </label>
       <label class="field" for="torrent">
         <span>.torrent</span>
         <input type="file" id="torrent" name="torrent" accept=".torrent,application/x-bittorrent">
       </label>
       <div class="dialog-actions">
-        <button type="button" id="cancel-add" class="secondary" onclick="document.getElementById('add-dialog').close()">Cancel</button>
-        <button type="submit" id="add-btn" class="primary" disabled>Add</button>
+        <button type="button" id="cancel-add" class="secondary"
+          hx-get="{{.DashboardURL}}"
+          hx-target="#dashboard"
+          hx-swap="outerHTML"
+          hx-include="#view-state">Cancel</button>
+        <button type="submit" id="add-btn" class="primary">Add</button>
       </div>
     </form>
   </dialog>
