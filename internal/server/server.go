@@ -892,8 +892,7 @@ func filterTorrents(items []domain.Torrent, params viewParams) []domain.Torrent 
 		}
 		if query != "" {
 			name := strings.ToLower(item.Name)
-			hash := strings.ToLower(item.Hash)
-			if !strings.Contains(name, query) && !strings.Contains(hash, query) {
+			if !strings.Contains(name, query) {
 				continue
 			}
 		}

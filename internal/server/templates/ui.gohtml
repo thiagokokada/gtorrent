@@ -105,6 +105,24 @@
   </div>
   <div class="controls-divider"></div>
   <div class="controls-section">
+    <div class="section-label">Search</div>
+    <form id="search-form" class="search-form" method="get"
+      hx-get="/ui/dashboard"
+      hx-target="#dashboard"
+      hx-swap="outerHTML">
+      <label class="search-field" for="search-query">
+        <span>Torrent</span>
+        <input type="search" id="search-query" name="q" value="{{.Params.Query}}" placeholder="Name">
+      </label>
+      <input type="hidden" name="filter" value="{{.Params.Filter}}">
+      <input type="hidden" name="sort" value="{{.Params.Sort}}">
+      <input type="hidden" name="dir" value="{{.Params.Dir}}">
+      <input type="hidden" name="selected" value="{{.Params.Selected}}">
+      <button type="submit" class="secondary">Search</button>
+    </form>
+  </div>
+  <div class="controls-divider"></div>
+  <div class="controls-section">
     <div class="section-label">Speed Limits</div>
     <form id="speed-limit-form" class="speed-limit-form" method="post"
       hx-post="/ui/speed-limits"

@@ -131,6 +131,12 @@ func TestDashboardEndpointRendersTorrentRows(t *testing.T) {
 	if !strings.Contains(body, `id="status-preserve" hx-preserve`) {
 		t.Fatalf("expected preserved status wrapper, body=%s", body)
 	}
+	if !strings.Contains(body, `id="search-form" class="search-form"`) {
+		t.Fatalf("expected search form in controls, body=%s", body)
+	}
+	if !strings.Contains(body, `id="search-query" name="q" value=""`) {
+		t.Fatalf("expected search input bound to q param, body=%s", body)
+	}
 	if !strings.Contains(body, "data-hash=\"abc\"") || !strings.Contains(body, `hx-get="/ui/dashboard?dir=desc&amp;filter=all&amp;selected=abc&amp;sort=addedAt"`) {
 		t.Fatalf("expected selectable row URL, body=%s", body)
 	}
@@ -195,6 +201,85 @@ func TestDashboardRendersFilterAndSortURLs(t *testing.T) {
 	}
 	if !refreshMatched {
 		t.Fatalf("expected refresh button to refresh full dashboard, body=%s", body)
+	}
+}
+
+func TestDashboardSearchPreservesQueryInControlURLs(t *testing.T) {
+	s, err := New(&mockService{
+		listFn: func(context.Context) ([]domain.Torrent, error) {
+			return []domain.Torrent{{Hash: "abc", Name: "Ubuntu ISO", State: "downloading"}}, nil
+		},
+	})
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/ui/dashboard?q=ubuntu&filter=all&sort=addedAt&dir=desc&selected=abc", nil)
+	rr := httptest.NewRecorder()
+	s.Handler().ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d, body=%s", rr.Code, rr.Body.String())
+	}
+
+	body := rr.Body.String()
+	if !strings.Contains(body, `id="search-query" name="q" value="ubuntu"`) {
+		t.Fatalf("expected search input to keep current query, body=%s", body)
+	}
+	if !strings.Contains(body, `id="refresh"`) || !strings.Contains(body, `hx-get="/ui/dashboard?dir=desc&amp;filter=all&amp;q=ubuntu&amp;selected=abc&amp;sort=addedAt"`) {
+		t.Fatalf("expected refresh URL to preserve query, body=%s", body)
+	}
+	if !strings.Contains(body, `hx-get="/ui/dashboard?dir=desc&amp;filter=downloading&amp;q=ubuntu&amp;selected=abc&amp;sort=addedAt"`) {
+		t.Fatalf("expected filter URL to preserve query, body=%s", body)
+	}
+	if !strings.Contains(body, `hx-get="/ui/dashboard?dir=asc&amp;filter=all&amp;q=ubuntu&amp;selected=abc&amp;sort=addedAt"`) {
+		t.Fatalf("expected sort URL to preserve query, body=%s", body)
+	}
+}
+
+func TestDashboardSearchMatchesTorrentNameOnly(t *testing.T) {
+	s, err := New(&mockService{
+		listFn: func(context.Context) ([]domain.Torrent, error) {
+			return []domain.Torrent{
+				{Hash: "deadbeef", Name: "Ubuntu ISO", State: "downloading"},
+				{Hash: "cafebabe", Name: "Arch Linux", State: "seeding"},
+			}, nil
+		},
+	})
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/ui/dashboard?q=ubuntu", nil)
+	rr := httptest.NewRecorder()
+	s.Handler().ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d, body=%s", rr.Code, rr.Body.String())
+	}
+
+	body := rr.Body.String()
+	if !strings.Contains(body, "Ubuntu ISO") {
+		t.Fatalf("expected torrent matched by name, body=%s", body)
+	}
+	if strings.Contains(body, "Arch Linux") {
+		t.Fatalf("did not expect unmatched torrent in filtered results, body=%s", body)
+	}
+
+	req = httptest.NewRequest(http.MethodGet, "/ui/dashboard?q=deadbeef", nil)
+	rr = httptest.NewRecorder()
+	s.Handler().ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d, body=%s", rr.Code, rr.Body.String())
+	}
+
+	body = rr.Body.String()
+	if strings.Contains(body, "Ubuntu ISO") {
+		t.Fatalf("did not expect hash-only match to pass name search, body=%s", body)
+	}
+	if !strings.Contains(body, "No torrents in this view") {
+		t.Fatalf("expected empty-state placeholder for non-matching name search, body=%s", body)
 	}
 }
 
