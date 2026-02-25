@@ -1,4 +1,11 @@
 const CONNECTION_STATES = ["online", "offline"];
+const FILTER_VALUES = ["all", "downloading", "seeding", "complete", "stopped"];
+const SORT_VALUES = ["addedAt", "name", "state", "progress", "etaSeconds", "ratio", "peers", "seeds", "downRate", "upRate", "sizeBytes"];
+const STORAGE_KEYS = {
+  filter: "gtorrent.view.filter",
+  sort: "gtorrent.view.sort",
+  dir: "gtorrent.view.dir",
+};
 const state = {
   connection: "offline",
 };
@@ -66,7 +73,71 @@ function isDashboardTarget(target) {
   return Boolean(target?.closest?.("#dashboard"));
 }
 
+function readStorage(key) {
+  try {
+    return window.localStorage.getItem(key);
+  } catch (_) {
+    return null;
+  }
+}
+
+function writeStorage(key, value) {
+  try {
+    window.localStorage.setItem(key, value);
+  } catch (_) {
+    // Ignore persistence failures (private mode, disabled storage, etc.)
+  }
+}
+
+function applyPersistedViewStateToInitialLoad() {
+  const initialDashboard = document.querySelector("main#dashboard[hx-get]");
+  if (!initialDashboard) {
+    return;
+  }
+
+  const baseURL = String(initialDashboard.getAttribute("hx-get") || "").trim();
+  if (baseURL === "") {
+    return;
+  }
+
+  const url = new URL(baseURL, window.location.origin);
+  const filter = String(readStorage(STORAGE_KEYS.filter) || "").trim();
+  const sort = String(readStorage(STORAGE_KEYS.sort) || "").trim();
+  const dir = String(readStorage(STORAGE_KEYS.dir) || "").trim();
+
+  if (FILTER_VALUES.includes(filter)) {
+    url.searchParams.set("filter", filter);
+  }
+  if (SORT_VALUES.includes(sort)) {
+    url.searchParams.set("sort", sort);
+  }
+  if (dir === "asc" || dir === "desc") {
+    url.searchParams.set("dir", dir);
+  }
+
+  const nextPath = url.pathname + (url.search || "");
+  initialDashboard.setAttribute("hx-get", nextPath);
+}
+
+function persistCurrentViewState() {
+  const filter = String(document.querySelector("#filter-input")?.value || "").trim();
+  const sort = String(document.querySelector("#sort-input")?.value || "").trim();
+  const dir = String(document.querySelector("#dir-input")?.value || "").trim();
+
+  if (FILTER_VALUES.includes(filter)) {
+    writeStorage(STORAGE_KEYS.filter, filter);
+  }
+  if (SORT_VALUES.includes(sort)) {
+    writeStorage(STORAGE_KEYS.sort, sort);
+  }
+  if (dir === "asc" || dir === "desc") {
+    writeStorage(STORAGE_KEYS.dir, dir);
+  }
+}
+
 function initDashboardUi() {
+  applyPersistedViewStateToInitialLoad();
+
   document.body.addEventListener("htmx:sseOpen", function (event) {
     if (isDashboardTarget(event.target)) {
       setConnectionState("online");
@@ -92,6 +163,12 @@ function initDashboardUi() {
     const target = event.detail?.target;
     if (target?.id === "dashboard") {
       renderConnection();
+    }
+  });
+
+  document.body.addEventListener("htmx:afterSettle", function (event) {
+    if (isDashboardTarget(event.detail?.target)) {
+      persistCurrentViewState();
     }
   });
 }
