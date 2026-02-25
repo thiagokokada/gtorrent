@@ -263,30 +263,6 @@
     return true;
   }
 
-  function closeAddDialog() {
-    const dialog = document.querySelector("#add-dialog");
-    if (!dialog) {
-      return;
-    }
-    if (typeof dialog.close === "function") {
-      dialog.close();
-      return;
-    }
-    dialog.removeAttribute("open");
-  }
-
-  function openAddDialog() {
-    const dialog = document.querySelector("#add-dialog");
-    if (!dialog) {
-      return;
-    }
-    if (typeof dialog.showModal === "function") {
-      dialog.showModal();
-      return;
-    }
-    dialog.setAttribute("open", "open");
-  }
-
   function syncDashboard() {
     syncBackendFromStats();
     setConnectionDot(connectionState);
@@ -337,16 +313,6 @@
   document.addEventListener("click", function (event) {
     const target = eventElement(event);
     if (!target) {
-      return;
-    }
-
-    if (target.closest("#open-add")) {
-      openAddDialog();
-      return;
-    }
-
-    if (target.closest("#cancel-add")) {
-      closeAddDialog();
       return;
     }
 

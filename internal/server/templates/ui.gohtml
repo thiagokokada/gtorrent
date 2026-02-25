@@ -25,7 +25,7 @@
     <div class="controls-section">
       <div class="section-label">Actions</div>
       <div class="action-row">
-        <button type="button" id="open-add" class="primary">Add</button>
+        <button type="button" id="open-add" class="primary" onclick="document.getElementById('add-dialog').showModal()">Add</button>
         {{if .HasSelected}}
         <button type="button" id="toggle-selected" class="secondary"
           hx-post="/ui/torrents/{{urlquery .SelectedHash}}/{{if .SelectedRunning}}stop{{else}}start{{end}}"
@@ -140,7 +140,7 @@
         <input type="file" id="torrent" name="torrent" accept=".torrent,application/x-bittorrent">
       </label>
       <div class="dialog-actions">
-        <button type="button" id="cancel-add" class="secondary">Cancel</button>
+        <button type="button" id="cancel-add" class="secondary" onclick="document.getElementById('add-dialog').close()">Cancel</button>
         <button type="submit" id="add-btn" class="primary">Add</button>
       </div>
     </form>
