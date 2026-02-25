@@ -23,15 +23,15 @@ type asset struct {
 
 var assets = []asset{
 	{
-		URL:      "https://unpkg.com/htmx.org@1.9.12/dist/htmx.min.js",
-		RelPath:  "internal/server/static/vendor/htmx-1.9.12.min.js",
-		SHA256:   "449317ade7881e949510db614991e195c3a099c4c791c24dacec55f9f4a2a452",
+		URL:      "https://unpkg.com/htmx.org@2.0.8/dist/htmx.min.js",
+		RelPath:  "internal/server/static/vendor/htmx-2.0.8.min.js",
+		SHA256:   "22283ef68cb7545914f0a88a1bdedc7256a703d1d580c1d255217d0a50d31313",
 		MaxBytes: 1 << 20,
 	},
 	{
-		URL:      "https://unpkg.com/htmx.org@1.9.12/dist/ext/sse.js",
-		RelPath:  "internal/server/static/vendor/htmx-sse-1.9.12.js",
-		SHA256:   "be05b2e2265279f035271adbea0b72a356f20ce4dfa5870481bfe9c51b822fc1",
+		URL:      "https://unpkg.com/htmx-ext-sse@2.2.4/dist/sse.min.js",
+		RelPath:  "internal/server/static/vendor/htmx-sse-2.2.4.min.js",
+		SHA256:   "98a46496de0c3605fbffdce9167ba427bdd9553184f83f149c261891a92c0136",
 		MaxBytes: 1 << 20,
 	},
 }
