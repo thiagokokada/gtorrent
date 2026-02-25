@@ -24,6 +24,10 @@ type mockService struct {
 	backendStatusFn func() domain.BackendStatus
 }
 
+type testFlusher struct{}
+
+func (testFlusher) Flush() {}
+
 func (m *mockService) List(ctx context.Context) ([]domain.Torrent, error) {
 	if m.listFn == nil {
 		return nil, nil
@@ -300,14 +304,61 @@ func TestUIStreamEndpoint(t *testing.T) {
 	if !strings.Contains(body, "event: stats") {
 		t.Fatalf("expected stats event, body=%s", body)
 	}
-	if !strings.Contains(body, "event: status") {
-		t.Fatalf("expected status event, body=%s", body)
-	}
 	if !strings.Contains(body, "event: table") {
 		t.Fatalf("expected table event, body=%s", body)
 	}
+	if strings.Contains(body, "event: status") {
+		t.Fatalf("unexpected status event for unchanged steady-state stream, body=%s", body)
+	}
 	if strings.Contains(body, "event: backend-status") {
 		t.Fatalf("unexpected backend-status event in ui stream, body=%s", body)
+	}
+}
+
+func TestWriteLiveUpdateDeduplicatesStatusEvent(t *testing.T) {
+	status := domain.BackendStatus{
+		Kind:    "ok",
+		Message: "Connected successfully to rTorrent: /run/rtorrent/rpc.sock",
+	}
+	s, err := New(&mockService{
+		listFn: func(context.Context) ([]domain.Torrent, error) {
+			return []domain.Torrent{{Hash: "abc", Name: "Ubuntu ISO", State: "downloading"}}, nil
+		},
+		backendStatusFn: func() domain.BackendStatus {
+			return status
+		},
+	})
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+
+	var body strings.Builder
+	lastKind := ""
+	lastMessage := ""
+
+	if err := s.writeLiveUpdate(&body, testFlusher{}, context.Background(), defaultViewParams(), &lastKind, &lastMessage); err != nil {
+		t.Fatalf("first writeLiveUpdate() error = %v", err)
+	}
+	if err := s.writeLiveUpdate(&body, testFlusher{}, context.Background(), defaultViewParams(), &lastKind, &lastMessage); err != nil {
+		t.Fatalf("second writeLiveUpdate() error = %v", err)
+	}
+
+	out := body.String()
+	if count := strings.Count(out, "event: status"); count != 1 {
+		t.Fatalf("expected 1 status event for unchanged status, got %d, body=%s", count, out)
+	}
+
+	status = domain.BackendStatus{
+		Kind:    "error",
+		Message: "Error talking to rTorrent (/run/rtorrent/rpc.sock): dial unix socket: no such file or directory",
+	}
+	if err := s.writeLiveUpdate(&body, testFlusher{}, context.Background(), defaultViewParams(), &lastKind, &lastMessage); err != nil {
+		t.Fatalf("third writeLiveUpdate() error = %v", err)
+	}
+
+	out = body.String()
+	if count := strings.Count(out, "event: status"); count != 2 {
+		t.Fatalf("expected 2 status events after status change, got %d, body=%s", count, out)
 	}
 }
 

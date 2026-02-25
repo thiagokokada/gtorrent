@@ -323,7 +323,8 @@ func (s *Server) handleUIStream(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := s.writeLiveUpdate(w, flusher, streamCtx, params); err != nil {
+	lastStatusKind, lastStatusMessage := statusFromBackendStatus(s.currentBackendStatus(nil))
+	if err := s.writeLiveUpdate(w, flusher, streamCtx, params, &lastStatusKind, &lastStatusMessage); err != nil {
 		return
 	}
 
@@ -338,7 +339,7 @@ func (s *Server) handleUIStream(w http.ResponseWriter, r *http.Request) {
 		case <-streamCtx.Done():
 			return
 		case <-pollTicker.C:
-			if err := s.writeLiveUpdate(w, flusher, streamCtx, params); err != nil {
+			if err := s.writeLiveUpdate(w, flusher, streamCtx, params, &lastStatusKind, &lastStatusMessage); err != nil {
 				return
 			}
 		case <-keepaliveTicker.C:
@@ -350,7 +351,7 @@ func (s *Server) handleUIStream(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (s *Server) writeLiveUpdate(w io.Writer, flusher http.Flusher, ctx context.Context, params viewParams) error {
+func (s *Server) writeLiveUpdate(w io.Writer, flusher http.Flusher, ctx context.Context, params viewParams, lastStatusKind, lastStatusMessage *string) error {
 	view, err := s.buildDashboardView(ctx, params)
 	if err != nil {
 		statusKind, statusMessage := statusFromBackendStatus(s.currentBackendStatus(err))
@@ -367,10 +368,6 @@ func (s *Server) writeLiveUpdate(w io.Writer, flusher http.Flusher, ctx context.
 			FilterURLs:    filterURLs,
 			SortURLs:      sortURLs,
 		}
-		statusHTML, renderErr := s.renderTemplateToString("status", fallback)
-		if renderErr != nil {
-			return renderErr
-		}
 		statsHTML, renderErr := s.renderTemplateToString("stats", fallback)
 		if renderErr != nil {
 			return renderErr
@@ -382,7 +379,7 @@ func (s *Server) writeLiveUpdate(w io.Writer, flusher http.Flusher, ctx context.
 		if writeErr := writeSSEHTML(w, flusher, "stats", statsHTML); writeErr != nil {
 			return writeErr
 		}
-		if writeErr := writeSSEHTML(w, flusher, "status", statusHTML); writeErr != nil {
+		if writeErr := s.writeStatusUpdate(w, flusher, fallback, lastStatusKind, lastStatusMessage); writeErr != nil {
 			return writeErr
 		}
 		if writeErr := writeSSEHTML(w, flusher, "table", tableHTML); writeErr != nil {
@@ -391,10 +388,6 @@ func (s *Server) writeLiveUpdate(w io.Writer, flusher http.Flusher, ctx context.
 		return nil
 	}
 
-	statusHTML, err := s.renderTemplateToString("status", view)
-	if err != nil {
-		return err
-	}
 	statsHTML, err := s.renderTemplateToString("stats", view)
 	if err != nil {
 		return err
@@ -406,11 +399,33 @@ func (s *Server) writeLiveUpdate(w io.Writer, flusher http.Flusher, ctx context.
 	if err := writeSSEHTML(w, flusher, "stats", statsHTML); err != nil {
 		return err
 	}
-	if err := writeSSEHTML(w, flusher, "status", statusHTML); err != nil {
+	if err := s.writeStatusUpdate(w, flusher, view, lastStatusKind, lastStatusMessage); err != nil {
 		return err
 	}
 	if err := writeSSEHTML(w, flusher, "table", tableHTML); err != nil {
 		return err
+	}
+	return nil
+}
+
+func (s *Server) writeStatusUpdate(w io.Writer, flusher http.Flusher, view dashboardView, lastStatusKind, lastStatusMessage *string) error {
+	if lastStatusKind != nil && lastStatusMessage != nil {
+		if *lastStatusKind == view.StatusKind && *lastStatusMessage == view.StatusMessage {
+			return nil
+		}
+	}
+
+	statusHTML, err := s.renderTemplateToString("status", view)
+	if err != nil {
+		return err
+	}
+	if err := writeSSEHTML(w, flusher, "status", statusHTML); err != nil {
+		return err
+	}
+
+	if lastStatusKind != nil && lastStatusMessage != nil {
+		*lastStatusKind = view.StatusKind
+		*lastStatusMessage = view.StatusMessage
 	}
 	return nil
 }

@@ -3,6 +3,7 @@
 
   let connectionState = "connecting";
   let dismissedMessageToken = "";
+  let messageHideTimer = 0;
 
   function messageBoxEl() {
     return document.querySelector("#form-message");
@@ -44,21 +45,50 @@
     return kind + ":" + text;
   }
 
-  function currentMessageToken() {
+  function clearMessageHideTimer() {
+    if (messageHideTimer !== 0) {
+      window.clearTimeout(messageHideTimer);
+      messageHideTimer = 0;
+    }
+  }
+
+  function currentMessageKind() {
     const box = messageBoxEl();
+    if (!box) {
+      return "info";
+    }
+    if (box.classList.contains("message-error")) {
+      return "error";
+    }
+    if (box.classList.contains("message-ok")) {
+      return "ok";
+    }
+    return "info";
+  }
+
+  function scheduleAutoHide(token, kind) {
+    clearMessageHideTimer();
+    if (kind === "error") {
+      return;
+    }
+    messageHideTimer = window.setTimeout(function () {
+      if (currentMessageToken() !== token) {
+        return;
+      }
+      dismissedMessageToken = token;
+      const box = messageBoxEl();
+      if (box) {
+        box.classList.add("is-hidden");
+      }
+    }, 4500);
+  }
+
+  function currentMessageToken() {
     const textEl = messageTextEl();
-    if (!box || !textEl) {
+    if (!textEl) {
       return "";
     }
-
-    let kind = "info";
-    if (box.classList.contains("message-error")) {
-      kind = "error";
-    } else if (box.classList.contains("message-ok")) {
-      kind = "ok";
-    }
-
-    return messageToken(kind, textEl.textContent.trim());
+    return messageToken(currentMessageKind(), textEl.textContent.trim());
   }
 
   function applyDismissedMessage() {
@@ -69,11 +99,13 @@
 
     const token = currentMessageToken();
     if (token !== "" && token === dismissedMessageToken) {
+      clearMessageHideTimer();
       box.classList.add("is-hidden");
       return;
     }
 
     box.classList.remove("is-hidden");
+    scheduleAutoHide(token, currentMessageKind());
   }
 
   function showMessage(kind, text) {
@@ -110,6 +142,7 @@
 
     if (target.closest("#form-message-close")) {
       dismissedMessageToken = currentMessageToken();
+      clearMessageHideTimer();
       const box = messageBoxEl();
       if (box) {
         box.classList.add("is-hidden");
