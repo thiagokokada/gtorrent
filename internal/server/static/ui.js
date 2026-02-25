@@ -52,30 +52,6 @@
       box.classList.remove("is-hidden");
     }
     box.classList.add("message-" + normalizedKind);
-
-    syncAutoDismiss(box, normalizedText !== "" && normalizedKind !== "error");
-  }
-
-  function syncAutoDismiss(box, shouldAutoDismiss) {
-    const existing = box.querySelector(".message-autodismiss");
-    if (existing) {
-      existing.remove();
-    }
-    if (!shouldAutoDismiss) {
-      return;
-    }
-
-    const marker = document.createElement("div");
-    marker.className = "message-autodismiss";
-    marker.setAttribute("hx-get", "/_empty");
-    marker.setAttribute("hx-trigger", "load delay:4s");
-    marker.setAttribute("hx-target", "#form-message");
-    marker.setAttribute("hx-swap", "outerHTML");
-    box.appendChild(marker);
-
-    if (window.htmx && typeof window.htmx.process === "function") {
-      window.htmx.process(marker);
-    }
   }
 
   function setConnectionState(state) {
