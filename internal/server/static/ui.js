@@ -45,8 +45,37 @@
     const normalizedKind = kind === "error" || kind === "ok" ? kind : "info";
     const normalizedText = String(text || "").trim();
     textEl.textContent = normalizedText;
-    box.classList.remove("is-hidden", "message-info", "message-ok", "message-error");
+    box.classList.remove("message-info", "message-ok", "message-error");
+    if (normalizedText === "") {
+      box.classList.add("is-hidden");
+    } else {
+      box.classList.remove("is-hidden");
+    }
     box.classList.add("message-" + normalizedKind);
+
+    syncAutoDismiss(box, normalizedText !== "" && normalizedKind !== "error");
+  }
+
+  function syncAutoDismiss(box, shouldAutoDismiss) {
+    const existing = box.querySelector(".message-autodismiss");
+    if (existing) {
+      existing.remove();
+    }
+    if (!shouldAutoDismiss) {
+      return;
+    }
+
+    const marker = document.createElement("div");
+    marker.className = "message-autodismiss";
+    marker.setAttribute("hx-get", "/_empty");
+    marker.setAttribute("hx-trigger", "load delay:4s");
+    marker.setAttribute("hx-target", "#form-message");
+    marker.setAttribute("hx-swap", "outerHTML");
+    box.appendChild(marker);
+
+    if (window.htmx && typeof window.htmx.process === "function") {
+      window.htmx.process(marker);
+    }
   }
 
   function setConnectionState(state) {
@@ -72,19 +101,6 @@
     setConnectionDot(connectionState);
     syncAddButtonState();
   }
-
-  document.addEventListener("click", function (event) {
-    if (!(event.target instanceof Element)) {
-      return;
-    }
-
-    if (event.target.closest("#form-message-close")) {
-      const box = messageBoxEl();
-      if (box) {
-        box.classList.add("is-hidden");
-      }
-    }
-  });
 
   document.body.addEventListener("htmx:sseOpen", function (event) {
     if (event.target instanceof Element && event.target.closest("#dashboard")) {

@@ -292,6 +292,10 @@ button:disabled {
   color: #2f445a;
 }
 
+.message-autodismiss {
+  display: none;
+}
+
 .table-panel {
   overflow: hidden;
   background: linear-gradient(180deg, #f5f9ff 0%, #e6edf8 100%);

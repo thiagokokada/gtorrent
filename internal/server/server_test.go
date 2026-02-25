@@ -248,6 +248,28 @@ func TestUIPageHasCacheBustedUIScript(t *testing.T) {
 	}
 }
 
+func TestEmptyEndpointRendersHiddenStatusPlaceholder(t *testing.T) {
+	s, err := New(&mockService{})
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/_empty", nil)
+	rr := httptest.NewRecorder()
+	s.Handler().ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d, body=%s", rr.Code, rr.Body.String())
+	}
+	body := rr.Body.String()
+	if !strings.Contains(body, `id="form-message"`) {
+		t.Fatalf("expected status placeholder, body=%s", body)
+	}
+	if !strings.Contains(body, "message-info is-hidden") {
+		t.Fatalf("expected hidden placeholder message, body=%s", body)
+	}
+}
+
 func TestAddTorrentMagnet(t *testing.T) {
 	called := false
 	s, err := New(&mockService{
@@ -320,8 +342,12 @@ func TestSetSpeedLimits(t *testing.T) {
 	if !called {
 		t.Fatalf("expected SetSpeedLimits call")
 	}
-	if !strings.Contains(rr.Body.String(), "Speed limits updated") {
-		t.Fatalf("expected success flash, body=%s", rr.Body.String())
+	body := rr.Body.String()
+	if !strings.Contains(body, "Speed limits updated") {
+		t.Fatalf("expected success flash, body=%s", body)
+	}
+	if !strings.Contains(body, `class="message-autodismiss"`) || !strings.Contains(body, `hx-trigger="load delay:4s"`) {
+		t.Fatalf("expected auto-dismiss marker for non-error flash, body=%s", body)
 	}
 }
 
@@ -351,8 +377,12 @@ func TestSetSpeedLimitsRejectsInvalidInput(t *testing.T) {
 	if called {
 		t.Fatalf("did not expect SetSpeedLimits call")
 	}
-	if !strings.Contains(rr.Body.String(), "download limit must be a non-negative integer") {
-		t.Fatalf("expected validation error, body=%s", rr.Body.String())
+	body := rr.Body.String()
+	if !strings.Contains(body, "download limit must be a non-negative integer") {
+		t.Fatalf("expected validation error, body=%s", body)
+	}
+	if strings.Contains(body, `class="message-autodismiss"`) {
+		t.Fatalf("did not expect auto-dismiss marker for error flash, body=%s", body)
 	}
 }
 

@@ -169,7 +169,10 @@
 {{if eq $statusKind ""}}{{$statusKind = "info"}}{{end}}
 <div id="form-message" class="message status-message message-{{$statusKind}}{{if eq .StatusMessage ""}} is-hidden{{end}}" sse-swap="status" hx-swap="outerHTML" role="status" aria-live="polite">
   <span id="form-message-text">{{.StatusMessage}}</span>
-  <button type="button" id="form-message-close" class="message-close" aria-label="Dismiss message">x</button>
+  <button type="button" id="form-message-close" class="message-close" aria-label="Dismiss message" hx-get="/_empty" hx-target="#form-message" hx-swap="outerHTML">x</button>
+  {{if and (ne .StatusMessage "") (ne $statusKind "error")}}
+  <div class="message-autodismiss" hx-get="/_empty" hx-trigger="load delay:4s" hx-target="#form-message" hx-swap="outerHTML"></div>
+  {{end}}
 </div>
 {{end}}
 

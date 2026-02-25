@@ -156,6 +156,7 @@ func (s *Server) ShutdownStreams() {
 
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
+	mux.HandleFunc("/_empty", s.handleUIEmpty)
 	mux.HandleFunc("/ui", s.handleUIPage)
 	mux.HandleFunc("/ui/dashboard", s.handleUIDashboard)
 	mux.HandleFunc("/ui/torrents", s.handleUIAddTorrent)
@@ -177,6 +178,19 @@ func (s *Server) handleUIPage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.renderIndex(w)
+}
+
+func (s *Server) handleUIEmpty(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeMethodNotAllowed(w, http.MethodGet)
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	if err := s.templates.ExecuteTemplate(w, "status", dashboardView{}); err != nil {
+		slog.Error("render status placeholder failed", "error", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+	}
 }
 
 func (s *Server) handleUIDashboard(w http.ResponseWriter, r *http.Request) {
