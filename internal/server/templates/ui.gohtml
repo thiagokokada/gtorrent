@@ -1,12 +1,6 @@
 {{define "dashboard"}}
 <section id="dashboard" class="dashboard app-shell" hx-ext="sse" sse-connect="{{.StreamURL}}">
-  <form id="view-state" hidden>
-    <input type="hidden" name="q" value="{{.Params.Query}}">
-    <input type="hidden" name="filter" id="filter-input" value="{{.Params.Filter}}">
-    <input type="hidden" name="sort" id="sort-input" value="{{.Params.Sort}}">
-    <input type="hidden" name="dir" id="dir-input" value="{{.Params.Dir}}">
-    <input type="hidden" name="selected" id="selected-input" value="{{.Params.Selected}}">
-  </form>
+  {{template "view-state" .}}
 
   <header class="topbar">
     <div class="brand-wrap">
@@ -21,129 +15,104 @@
     </div>
   </header>
 
-  <section class="controls card">
-    <div class="controls-section">
-      <div class="section-label">Actions</div>
-      <div class="action-row">
-        <button type="button" id="open-add" class="primary" onclick="document.getElementById('add-dialog').showModal()">Add</button>
-        {{if .HasSelected}}
-        <button type="button" id="toggle-selected" class="secondary"
-          hx-post="/ui/torrents/{{urlquery .SelectedHash}}/{{if .SelectedRunning}}stop{{else}}start{{end}}"
-          hx-target="#dashboard"
-          hx-swap="outerHTML"
-          hx-include="#view-state">{{if .SelectedRunning}}Stop{{else}}Start{{end}}</button>
-        <button type="button" id="recheck-selected" class="secondary"
-          hx-post="/ui/torrents/{{urlquery .SelectedHash}}/recheck"
-          hx-target="#dashboard"
-          hx-swap="outerHTML"
-          hx-include="#view-state">Recheck</button>
-        <button type="button" id="remove-selected" class="danger"
-          hx-post="/ui/torrents/{{urlquery .SelectedHash}}/remove"
-          hx-target="#dashboard"
-          hx-swap="outerHTML"
-          hx-include="#view-state"
-          hx-confirm="Remove selected torrent?">Remove</button>
-        {{else}}
-        <button type="button" id="toggle-selected" class="secondary" disabled>Start</button>
-        <button type="button" id="recheck-selected" class="secondary" disabled>Recheck</button>
-        <button type="button" id="remove-selected" class="danger" disabled>Remove</button>
-        {{end}}
-        <button type="button" id="refresh" class="secondary"
-          hx-get="{{.DashboardURL}}"
-          hx-target="#dashboard"
-          hx-swap="outerHTML">Refresh</button>
-      </div>
-    </div>
-    <div class="controls-divider"></div>
-    <div class="controls-section">
-      <div class="section-label">Filter View</div>
-      <div class="filter-row" id="filters">
-        <button type="button" data-filter="all" class="{{if eq .Params.Filter "all"}}active{{end}}"
-          hx-get="{{index .FilterURLs "all"}}"
-          hx-target="#dashboard"
-          hx-swap="outerHTML">All</button>
-        <button type="button" data-filter="downloading" class="{{if eq .Params.Filter "downloading"}}active{{end}}"
-          hx-get="{{index .FilterURLs "downloading"}}"
-          hx-target="#dashboard"
-          hx-swap="outerHTML">Downloading</button>
-        <button type="button" data-filter="seeding" class="{{if eq .Params.Filter "seeding"}}active{{end}}"
-          hx-get="{{index .FilterURLs "seeding"}}"
-          hx-target="#dashboard"
-          hx-swap="outerHTML">Seeding</button>
-        <button type="button" data-filter="complete" class="{{if eq .Params.Filter "complete"}}active{{end}}"
-          hx-get="{{index .FilterURLs "complete"}}"
-          hx-target="#dashboard"
-          hx-swap="outerHTML">Complete</button>
-        <button type="button" data-filter="stopped" class="{{if eq .Params.Filter "stopped"}}active{{end}}"
-          hx-get="{{index .FilterURLs "stopped"}}"
-          hx-target="#dashboard"
-          hx-swap="outerHTML">Stopped</button>
-      </div>
-    </div>
-    <div class="controls-divider"></div>
-    <div class="controls-section">
-      <div class="section-label">Speed Limits</div>
-      <form id="speed-limit-form" class="speed-limit-form" method="post"
-        hx-post="/ui/speed-limits"
-        hx-target="#dashboard"
-        hx-swap="outerHTML"
-        hx-include="#view-state">
-        <label class="speed-limit-field" for="download-limit-kib">
-          <span>Down KiB/s</span>
-          <input type="number" id="download-limit-kib" name="downloadLimitKiB" min="0" step="1" value="{{.DownloadLimitKiB}}">
-        </label>
-        <label class="speed-limit-field" for="upload-limit-kib">
-          <span>Up KiB/s</span>
-          <input type="number" id="upload-limit-kib" name="uploadLimitKiB" min="0" step="1" value="{{.UploadLimitKiB}}">
-        </label>
-        <button type="submit" class="secondary">Apply</button>
-      </form>
-    </div>
-  </section>
-
+  {{template "controls" .}}
   {{template "status" .}}
+  {{template "file-list" .}}
+</section>
+{{end}}
 
-  <section class="table-panel card">
-    <div class="table-wrap">
-      <table id="torrent-table">
-        <colgroup>
-          <col data-col="name">
-          <col data-col="state">
-          <col data-col="addedAt">
-          <col data-col="progress">
-          <col data-col="etaSeconds">
-          <col data-col="ratio">
-          <col data-col="peers">
-          <col data-col="seeds">
-          <col data-col="downRate">
-          <col data-col="upRate">
-          <col data-col="sizeBytes">
-        </colgroup>
-        <thead>
-          <tr>
-            <th data-col="name"><button type="button" class="sort-btn" data-sort="name" hx-get="{{index .SortURLs "name"}}" hx-target="#dashboard" hx-swap="outerHTML">Name{{if eq .Params.Sort "name"}} {{if eq .Params.Dir "asc"}}▲{{else}}▼{{end}}{{end}}</button></th>
-            <th data-col="state"><button type="button" class="sort-btn" data-sort="state" hx-get="{{index .SortURLs "state"}}" hx-target="#dashboard" hx-swap="outerHTML">State{{if eq .Params.Sort "state"}} {{if eq .Params.Dir "asc"}}▲{{else}}▼{{end}}{{end}}</button></th>
-            <th data-col="addedAt"><button type="button" class="sort-btn" data-sort="addedAt" hx-get="{{index .SortURLs "addedAt"}}" hx-target="#dashboard" hx-swap="outerHTML">Added{{if eq .Params.Sort "addedAt"}} {{if eq .Params.Dir "asc"}}▲{{else}}▼{{end}}{{end}}</button></th>
-            <th data-col="progress"><button type="button" class="sort-btn" data-sort="progress" hx-get="{{index .SortURLs "progress"}}" hx-target="#dashboard" hx-swap="outerHTML">Done{{if eq .Params.Sort "progress"}} {{if eq .Params.Dir "asc"}}▲{{else}}▼{{end}}{{end}}</button></th>
-            <th data-col="etaSeconds"><button type="button" class="sort-btn" data-sort="etaSeconds" hx-get="{{index .SortURLs "etaSeconds"}}" hx-target="#dashboard" hx-swap="outerHTML">ETA{{if eq .Params.Sort "etaSeconds"}} {{if eq .Params.Dir "asc"}}▲{{else}}▼{{end}}{{end}}</button></th>
-            <th data-col="ratio"><button type="button" class="sort-btn" data-sort="ratio" hx-get="{{index .SortURLs "ratio"}}" hx-target="#dashboard" hx-swap="outerHTML">Ratio{{if eq .Params.Sort "ratio"}} {{if eq .Params.Dir "asc"}}▲{{else}}▼{{end}}{{end}}</button></th>
-            <th data-col="peers"><button type="button" class="sort-btn" data-sort="peers" hx-get="{{index .SortURLs "peers"}}" hx-target="#dashboard" hx-swap="outerHTML">Peers{{if eq .Params.Sort "peers"}} {{if eq .Params.Dir "asc"}}▲{{else}}▼{{end}}{{end}}</button></th>
-            <th data-col="seeds"><button type="button" class="sort-btn" data-sort="seeds" hx-get="{{index .SortURLs "seeds"}}" hx-target="#dashboard" hx-swap="outerHTML">Seeds{{if eq .Params.Sort "seeds"}} {{if eq .Params.Dir "asc"}}▲{{else}}▼{{end}}{{end}}</button></th>
-            <th data-col="downRate"><button type="button" class="sort-btn" data-sort="downRate" hx-get="{{index .SortURLs "downRate"}}" hx-target="#dashboard" hx-swap="outerHTML">Down{{if eq .Params.Sort "downRate"}} {{if eq .Params.Dir "asc"}}▲{{else}}▼{{end}}{{end}}</button></th>
-            <th data-col="upRate"><button type="button" class="sort-btn" data-sort="upRate" hx-get="{{index .SortURLs "upRate"}}" hx-target="#dashboard" hx-swap="outerHTML">Up{{if eq .Params.Sort "upRate"}} {{if eq .Params.Dir "asc"}}▲{{else}}▼{{end}}{{end}}</button></th>
-            <th data-col="sizeBytes"><button type="button" class="sort-btn" data-sort="sizeBytes" hx-get="{{index .SortURLs "sizeBytes"}}" hx-target="#dashboard" hx-swap="outerHTML">Size{{if eq .Params.Sort "sizeBytes"}} {{if eq .Params.Dir "asc"}}▲{{else}}▼{{end}}{{end}}</button></th>
-          </tr>
-        </thead>
-        {{template "table" .}}
-      </table>
+{{define "fragments"}}
+{{template "view-state" .}}
+{{template "stats" .}}
+{{template "controls" .}}
+{{template "status" .}}
+{{template "file-list" .}}
+{{end}}
+
+{{define "view-state"}}
+<form id="view-state" hidden{{if .SwapOOB}} hx-swap-oob="outerHTML"{{end}}>
+  <input type="hidden" name="q" value="{{.Params.Query}}">
+  <input type="hidden" name="filter" id="filter-input" value="{{.Params.Filter}}">
+  <input type="hidden" name="sort" id="sort-input" value="{{.Params.Sort}}">
+  <input type="hidden" name="dir" id="dir-input" value="{{.Params.Dir}}">
+  <input type="hidden" name="selected" id="selected-input" value="{{.Params.Selected}}">
+</form>
+{{end}}
+
+{{define "controls"}}
+<section id="controls-panel" class="controls card"{{if .SwapOOB}} hx-swap-oob="outerHTML"{{end}}>
+  <div class="controls-section">
+    <div class="section-label">Actions</div>
+    <div class="action-row">
+      <button type="button" id="open-add" class="primary" onclick="document.getElementById('add-dialog').showModal()">Add</button>
+      {{if .HasSelected}}
+      <button type="button" id="toggle-selected" class="secondary"
+        hx-post="/ui/torrents/{{urlquery .SelectedHash}}/{{if .SelectedRunning}}stop{{else}}start{{end}}"
+        hx-swap="none"
+        hx-include="#view-state">{{if .SelectedRunning}}Stop{{else}}Start{{end}}</button>
+      <button type="button" id="recheck-selected" class="secondary"
+        hx-post="/ui/torrents/{{urlquery .SelectedHash}}/recheck"
+        hx-swap="none"
+        hx-include="#view-state">Recheck</button>
+      <button type="button" id="remove-selected" class="danger"
+        hx-post="/ui/torrents/{{urlquery .SelectedHash}}/remove"
+        hx-swap="none"
+        hx-include="#view-state"
+        hx-confirm="Remove selected torrent?">Remove</button>
+      {{else}}
+      <button type="button" id="toggle-selected" class="secondary" disabled>Start</button>
+      <button type="button" id="recheck-selected" class="secondary" disabled>Recheck</button>
+      <button type="button" id="remove-selected" class="danger" disabled>Remove</button>
+      {{end}}
+      <button type="button" id="refresh" class="secondary"
+        hx-get="{{.DashboardURL}}"
+        hx-swap="none">Refresh</button>
     </div>
-  </section>
+  </div>
+  <div class="controls-divider"></div>
+  <div class="controls-section">
+    <div class="section-label">Filter View</div>
+    <div class="filter-row" id="filters">
+      <button type="button" data-filter="all" class="{{if eq .Params.Filter "all"}}active{{end}}"
+        hx-get="{{index .FilterURLs "all"}}"
+        hx-swap="none">All</button>
+      <button type="button" data-filter="downloading" class="{{if eq .Params.Filter "downloading"}}active{{end}}"
+        hx-get="{{index .FilterURLs "downloading"}}"
+        hx-swap="none">Downloading</button>
+      <button type="button" data-filter="seeding" class="{{if eq .Params.Filter "seeding"}}active{{end}}"
+        hx-get="{{index .FilterURLs "seeding"}}"
+        hx-swap="none">Seeding</button>
+      <button type="button" data-filter="complete" class="{{if eq .Params.Filter "complete"}}active{{end}}"
+        hx-get="{{index .FilterURLs "complete"}}"
+        hx-swap="none">Complete</button>
+      <button type="button" data-filter="stopped" class="{{if eq .Params.Filter "stopped"}}active{{end}}"
+        hx-get="{{index .FilterURLs "stopped"}}"
+        hx-swap="none">Stopped</button>
+    </div>
+  </div>
+  <div class="controls-divider"></div>
+  <div class="controls-section">
+    <div class="section-label">Speed Limits</div>
+    <form id="speed-limit-form" class="speed-limit-form" method="post"
+      hx-post="/ui/speed-limits"
+      hx-swap="none"
+      hx-include="#view-state">
+      <label class="speed-limit-field" for="download-limit-kib">
+        <span>Down KiB/s</span>
+        <input type="number" id="download-limit-kib" name="downloadLimitKiB" min="0" step="1" value="{{.DownloadLimitKiB}}">
+      </label>
+      <label class="speed-limit-field" for="upload-limit-kib">
+        <span>Up KiB/s</span>
+        <input type="number" id="upload-limit-kib" name="uploadLimitKiB" min="0" step="1" value="{{.UploadLimitKiB}}">
+      </label>
+      <button type="submit" class="secondary">Apply</button>
+    </form>
+  </div>
 
   <dialog id="add-dialog" class="add-dialog"{{if .OpenAddDialog}} data-open-on-load="true"{{end}}>
     <form id="add-form" class="add-form" method="post"
       hx-post="/ui/torrents"
-      hx-target="#dashboard"
-      hx-swap="outerHTML"
+      hx-swap="none"
       hx-encoding="multipart/form-data"
       hx-include="#view-state">
       <h2>Add Torrent</h2>
@@ -161,9 +130,7 @@
       <div class="dialog-actions">
         <button type="button" id="cancel-add" class="secondary"
           hx-get="{{.DashboardURL}}"
-          hx-target="#dashboard"
-          hx-swap="outerHTML"
-          hx-include="#view-state">Cancel</button>
+          hx-swap="none">Cancel</button>
         <button type="submit" id="add-btn" class="primary">Add</button>
       </div>
     </form>
@@ -174,7 +141,7 @@
 {{define "status"}}
 {{$statusKind := .StatusKind}}
 {{if eq $statusKind ""}}{{$statusKind = "info"}}{{end}}
-<div id="form-message" class="message status-message message-{{$statusKind}}{{if eq .StatusMessage ""}} is-hidden{{end}}" sse-swap="status" hx-swap="outerHTML" role="status" aria-live="polite">
+<div id="form-message" class="message status-message message-{{$statusKind}}{{if eq .StatusMessage ""}} is-hidden{{end}}" sse-swap="status" hx-swap="outerHTML"{{if .SwapOOB}} hx-swap-oob="outerHTML"{{end}} role="status" aria-live="polite">
   <span id="form-message-text">{{.StatusMessage}}</span>
   <button type="button" id="form-message-close" class="message-close" aria-label="Dismiss message" hx-get="/_empty" hx-target="#form-message" hx-swap="outerHTML">x</button>
   {{if and (ne .StatusMessage "") (ne $statusKind "error")}}
@@ -184,7 +151,45 @@
 {{end}}
 
 {{define "stats"}}
-<div id="global-stats" class="global-stats" sse-swap="stats" hx-swap="outerHTML">{{.VisibleCount}} torrents | ↓ {{.TotalDownRate}} | ↑ {{.TotalUpRate}}</div>
+<div id="global-stats" class="global-stats" sse-swap="stats" hx-swap="outerHTML"{{if .SwapOOB}} hx-swap-oob="outerHTML"{{end}}>{{.VisibleCount}} torrents | ↓ {{.TotalDownRate}} | ↑ {{.TotalUpRate}}</div>
+{{end}}
+
+{{define "file-list"}}
+<section id="file-list" class="table-panel card"{{if .SwapOOB}} hx-swap-oob="outerHTML"{{end}}>
+  <div class="table-wrap">
+    <table id="torrent-table">
+      <colgroup>
+        <col data-col="name">
+        <col data-col="state">
+        <col data-col="addedAt">
+        <col data-col="progress">
+        <col data-col="etaSeconds">
+        <col data-col="ratio">
+        <col data-col="peers">
+        <col data-col="seeds">
+        <col data-col="downRate">
+        <col data-col="upRate">
+        <col data-col="sizeBytes">
+      </colgroup>
+      <thead>
+        <tr>
+          <th data-col="name"><button type="button" class="sort-btn" data-sort="name" hx-get="{{index .SortURLs "name"}}" hx-swap="none">Name{{if eq .Params.Sort "name"}} {{if eq .Params.Dir "asc"}}▲{{else}}▼{{end}}{{end}}</button></th>
+          <th data-col="state"><button type="button" class="sort-btn" data-sort="state" hx-get="{{index .SortURLs "state"}}" hx-swap="none">State{{if eq .Params.Sort "state"}} {{if eq .Params.Dir "asc"}}▲{{else}}▼{{end}}{{end}}</button></th>
+          <th data-col="addedAt"><button type="button" class="sort-btn" data-sort="addedAt" hx-get="{{index .SortURLs "addedAt"}}" hx-swap="none">Added{{if eq .Params.Sort "addedAt"}} {{if eq .Params.Dir "asc"}}▲{{else}}▼{{end}}{{end}}</button></th>
+          <th data-col="progress"><button type="button" class="sort-btn" data-sort="progress" hx-get="{{index .SortURLs "progress"}}" hx-swap="none">Done{{if eq .Params.Sort "progress"}} {{if eq .Params.Dir "asc"}}▲{{else}}▼{{end}}{{end}}</button></th>
+          <th data-col="etaSeconds"><button type="button" class="sort-btn" data-sort="etaSeconds" hx-get="{{index .SortURLs "etaSeconds"}}" hx-swap="none">ETA{{if eq .Params.Sort "etaSeconds"}} {{if eq .Params.Dir "asc"}}▲{{else}}▼{{end}}{{end}}</button></th>
+          <th data-col="ratio"><button type="button" class="sort-btn" data-sort="ratio" hx-get="{{index .SortURLs "ratio"}}" hx-swap="none">Ratio{{if eq .Params.Sort "ratio"}} {{if eq .Params.Dir "asc"}}▲{{else}}▼{{end}}{{end}}</button></th>
+          <th data-col="peers"><button type="button" class="sort-btn" data-sort="peers" hx-get="{{index .SortURLs "peers"}}" hx-swap="none">Peers{{if eq .Params.Sort "peers"}} {{if eq .Params.Dir "asc"}}▲{{else}}▼{{end}}{{end}}</button></th>
+          <th data-col="seeds"><button type="button" class="sort-btn" data-sort="seeds" hx-get="{{index .SortURLs "seeds"}}" hx-swap="none">Seeds{{if eq .Params.Sort "seeds"}} {{if eq .Params.Dir "asc"}}▲{{else}}▼{{end}}{{end}}</button></th>
+          <th data-col="downRate"><button type="button" class="sort-btn" data-sort="downRate" hx-get="{{index .SortURLs "downRate"}}" hx-swap="none">Down{{if eq .Params.Sort "downRate"}} {{if eq .Params.Dir "asc"}}▲{{else}}▼{{end}}{{end}}</button></th>
+          <th data-col="upRate"><button type="button" class="sort-btn" data-sort="upRate" hx-get="{{index .SortURLs "upRate"}}" hx-swap="none">Up{{if eq .Params.Sort "upRate"}} {{if eq .Params.Dir "asc"}}▲{{else}}▼{{end}}{{end}}</button></th>
+          <th data-col="sizeBytes"><button type="button" class="sort-btn" data-sort="sizeBytes" hx-get="{{index .SortURLs "sizeBytes"}}" hx-swap="none">Size{{if eq .Params.Sort "sizeBytes"}} {{if eq .Params.Dir "asc"}}▲{{else}}▼{{end}}{{end}}</button></th>
+        </tr>
+      </thead>
+      {{template "table" .}}
+    </table>
+  </div>
+</section>
 {{end}}
 
 {{define "table"}}
@@ -193,8 +198,7 @@
     {{range .Torrents}}
       <tr data-hash="{{.Hash}}" class="{{if .Active}}active{{end}}"
         hx-get="{{.SelectURL}}"
-        hx-target="#dashboard"
-        hx-swap="outerHTML">
+        hx-swap="none">
         <td class="name">{{.Name}}</td>
         <td><span class="state {{.StateClass}}">{{.State}}</span></td>
         <td class="added">{{.AddedAt}}</td>

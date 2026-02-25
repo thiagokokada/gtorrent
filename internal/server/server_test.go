@@ -225,6 +225,81 @@ func TestDashboardRendersSelectedActionButtons(t *testing.T) {
 	}
 }
 
+func TestDashboardHTMXReturnsFragmentBundle(t *testing.T) {
+	s, err := New(&mockService{
+		listFn: func(context.Context) ([]domain.Torrent, error) {
+			return []domain.Torrent{{Hash: "abc", Name: "Ubuntu ISO", State: "downloading"}}, nil
+		},
+	})
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/ui/dashboard?selected=abc", nil)
+	req.Header.Set("HX-Request", "true")
+	req.Header.Set("HX-Target", "toggle-selected")
+	rr := httptest.NewRecorder()
+	s.Handler().ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d, body=%s", rr.Code, rr.Body.String())
+	}
+	body := rr.Body.String()
+	if strings.Contains(body, `<section id="dashboard"`) {
+		t.Fatalf("did not expect full dashboard for htmx fragment request, body=%s", body)
+	}
+	if !strings.Contains(body, `id="controls-panel" class="controls card" hx-swap-oob="outerHTML"`) {
+		t.Fatalf("expected controls fragment oob swap, body=%s", body)
+	}
+	if !strings.Contains(body, `id="file-list" class="table-panel card" hx-swap-oob="outerHTML"`) {
+		t.Fatalf("expected file-list fragment oob swap, body=%s", body)
+	}
+	if !strings.Contains(body, `id="form-message"`) || !strings.Contains(body, `hx-swap-oob="outerHTML"`) {
+		t.Fatalf("expected status fragment oob swap, body=%s", body)
+	}
+}
+
+func TestDashboardCancelAddHTMXReturnsControlsOnly(t *testing.T) {
+	s, err := New(&mockService{
+		listFn: func(context.Context) ([]domain.Torrent, error) {
+			return []domain.Torrent{{Hash: "abc", Name: "Ubuntu ISO", State: "downloading"}}, nil
+		},
+	})
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/ui/dashboard?selected=abc", nil)
+	req.Header.Set("HX-Request", "true")
+	req.Header.Set("HX-Target", "cancel-add")
+	req.Header.Set("HX-Trigger", "cancel-add")
+	rr := httptest.NewRecorder()
+	s.Handler().ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d, body=%s", rr.Code, rr.Body.String())
+	}
+	body := rr.Body.String()
+	if strings.Contains(body, `<section id="dashboard"`) {
+		t.Fatalf("did not expect full dashboard for htmx fragment request, body=%s", body)
+	}
+	if !strings.Contains(body, `id="controls-panel" class="controls card" hx-swap-oob="outerHTML"`) {
+		t.Fatalf("expected controls fragment oob swap, body=%s", body)
+	}
+	if strings.Contains(body, `id="file-list" class="table-panel card"`) {
+		t.Fatalf("did not expect file-list fragment for cancel-add, body=%s", body)
+	}
+	if strings.Contains(body, `id="form-message"`) {
+		t.Fatalf("did not expect status fragment for cancel-add, body=%s", body)
+	}
+	if strings.Contains(body, `id="global-stats" class="global-stats"`) {
+		t.Fatalf("did not expect stats fragment for cancel-add, body=%s", body)
+	}
+	if strings.Contains(body, `id="view-state" hidden`) {
+		t.Fatalf("did not expect view-state fragment for cancel-add, body=%s", body)
+	}
+}
+
 func TestUIPageHasCacheBustedUIScript(t *testing.T) {
 	s, err := New(&mockService{})
 	if err != nil {
@@ -361,6 +436,64 @@ func TestAddTorrentRequiresMagnetOrFile(t *testing.T) {
 	}
 }
 
+func TestAddTorrentRequiresMagnetOrFileHTMXReturnsFragments(t *testing.T) {
+	called := false
+	s, err := New(&mockService{
+		listFn: func(context.Context) ([]domain.Torrent, error) {
+			return nil, nil
+		},
+		addMagnetFn: func(context.Context, string) error {
+			called = true
+			return nil
+		},
+		addFileFn: func(context.Context, []byte, string) error {
+			called = true
+			return nil
+		},
+	})
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+
+	var body bytes.Buffer
+	writer := multipart.NewWriter(&body)
+	_ = writer.WriteField("filter", "all")
+	_ = writer.Close()
+
+	req := httptest.NewRequest(http.MethodPost, "/ui/torrents", &body)
+	req.Header.Set("Content-Type", writer.FormDataContentType())
+	req.Header.Set("HX-Request", "true")
+	req.Header.Set("HX-Target", "add-form")
+	rr := httptest.NewRecorder()
+	s.Handler().ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d, body=%s", rr.Code, rr.Body.String())
+	}
+	if called {
+		t.Fatalf("did not expect AddMagnet or AddTorrent call")
+	}
+	responseBody := rr.Body.String()
+	if strings.Contains(responseBody, `<section id="dashboard"`) {
+		t.Fatalf("did not expect full dashboard for htmx fragment request, body=%s", responseBody)
+	}
+	if !strings.Contains(responseBody, `class="add-form-error"`) {
+		t.Fatalf("expected inline add form error, body=%s", responseBody)
+	}
+	if !strings.Contains(responseBody, `<dialog id="add-dialog" class="add-dialog" data-open-on-load="true">`) {
+		t.Fatalf("expected add dialog to request modal reopen, body=%s", responseBody)
+	}
+	if !strings.Contains(responseBody, `id="controls-panel" class="controls card" hx-swap-oob="outerHTML"`) {
+		t.Fatalf("expected controls fragment oob swap, body=%s", responseBody)
+	}
+	if strings.Contains(responseBody, `id="form-message"`) {
+		t.Fatalf("did not expect status fragment for add-form validation response, body=%s", responseBody)
+	}
+	if strings.Contains(responseBody, `id="view-state" hidden`) {
+		t.Fatalf("did not expect view-state fragment for add-form validation response, body=%s", responseBody)
+	}
+}
+
 func TestAddTorrentMagnetErrorShowsInlineFormError(t *testing.T) {
 	s, err := New(&mockService{
 		listFn: func(context.Context) ([]domain.Torrent, error) {
@@ -441,6 +574,61 @@ func TestSetSpeedLimits(t *testing.T) {
 	}
 	if !strings.Contains(body, `class="message-autodismiss"`) || !strings.Contains(body, `hx-trigger="load delay:4s"`) {
 		t.Fatalf("expected auto-dismiss marker for non-error flash, body=%s", body)
+	}
+}
+
+func TestSetSpeedLimitsHTMXReturnsControlsAndStatusOnly(t *testing.T) {
+	called := false
+	s, err := New(&mockService{
+		listFn: func(context.Context) ([]domain.Torrent, error) {
+			return []domain.Torrent{{Hash: "abc", Name: "Ubuntu ISO", State: "downloading"}}, nil
+		},
+		setSpeedLimitsFn: func(_ context.Context, limits domain.SpeedLimits) error {
+			called = true
+			if limits.DownloadKiB != 2048 || limits.UploadKiB != 512 {
+				t.Fatalf("unexpected speed limits: %+v", limits)
+			}
+			return nil
+		},
+		getSpeedLimitsFn: func(context.Context) (domain.SpeedLimits, error) {
+			return domain.SpeedLimits{DownloadKiB: 2048, UploadKiB: 512}, nil
+		},
+	})
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/ui/speed-limits", strings.NewReader("downloadLimitKiB=2048&uploadLimitKiB=512&filter=all&sort=addedAt&dir=desc"))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.Header.Set("HX-Request", "true")
+	req.Header.Set("HX-Target", "speed-limit-form")
+	rr := httptest.NewRecorder()
+	s.Handler().ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d, body=%s", rr.Code, rr.Body.String())
+	}
+	if !called {
+		t.Fatalf("expected SetSpeedLimits call")
+	}
+	body := rr.Body.String()
+	if strings.Contains(body, `<section id="dashboard"`) {
+		t.Fatalf("did not expect full dashboard for htmx fragment request, body=%s", body)
+	}
+	if !strings.Contains(body, `id="controls-panel" class="controls card" hx-swap-oob="outerHTML"`) {
+		t.Fatalf("expected controls fragment oob swap, body=%s", body)
+	}
+	if !strings.Contains(body, `id="form-message"`) {
+		t.Fatalf("expected status fragment in response, body=%s", body)
+	}
+	if strings.Contains(body, `id="file-list" class="table-panel card"`) {
+		t.Fatalf("did not expect file-list fragment for speed limit update, body=%s", body)
+	}
+	if strings.Contains(body, `id="global-stats" class="global-stats"`) {
+		t.Fatalf("did not expect stats fragment for speed limit update, body=%s", body)
+	}
+	if strings.Contains(body, `id="view-state" hidden`) {
+		t.Fatalf("did not expect view-state fragment for speed limit update, body=%s", body)
 	}
 }
 
