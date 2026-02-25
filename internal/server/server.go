@@ -99,6 +99,9 @@ type dashboardView struct {
 	TotalDownRate        string
 	TotalUpRate          string
 	StreamURL            string
+	DashboardURL         string
+	FilterURLs           map[string]string
+	SortURLs             map[string]string
 	BackendStatusKind    string
 	BackendStatusMessage string
 }
@@ -426,12 +429,16 @@ func (s *Server) writeLiveUpdate(w io.Writer, flusher http.Flusher, ctx context.
 	view, err := s.buildDashboardView(ctx, params)
 	if err != nil {
 		status := s.currentBackendStatus(err)
+		dashboardURL, filterURLs, sortURLs := controlURLs(params)
 		fallback := dashboardView{
 			Params:               params,
 			VisibleCount:         0,
 			TotalDownRate:        "0 B/s",
 			TotalUpRate:          "0 B/s",
 			StreamURL:            streamURLForParams(params),
+			DashboardURL:         dashboardURL,
+			FilterURLs:           filterURLs,
+			SortURLs:             sortURLs,
 			BackendStatusKind:    status.Kind,
 			BackendStatusMessage: status.Message,
 		}
@@ -500,12 +507,16 @@ func (s *Server) renderDashboard(w http.ResponseWriter, ctx context.Context, par
 	view, err := s.buildDashboardView(ctx, params)
 	if err != nil {
 		status := s.currentBackendStatus(err)
+		dashboardURL, filterURLs, sortURLs := controlURLs(params)
 		view = dashboardView{
 			Params:               params,
 			VisibleCount:         0,
 			TotalDownRate:        "0 B/s",
 			TotalUpRate:          "0 B/s",
 			StreamURL:            streamURLForParams(params),
+			DashboardURL:         dashboardURL,
+			FilterURLs:           filterURLs,
+			SortURLs:             sortURLs,
 			BackendStatusKind:    status.Kind,
 			BackendStatusMessage: status.Message,
 		}
@@ -557,6 +568,7 @@ func (s *Server) buildDashboardView(ctx context.Context, params viewParams) (das
 	}
 
 	status := s.currentBackendStatus(nil)
+	dashboardURL, filterURLs, sortURLs := controlURLs(params)
 	return dashboardView{
 		Params:               params,
 		Torrents:             rows,
@@ -564,6 +576,9 @@ func (s *Server) buildDashboardView(ctx context.Context, params viewParams) (das
 		TotalDownRate:        formatRate(downTotal),
 		TotalUpRate:          formatRate(upTotal),
 		StreamURL:            streamURLForParams(params),
+		DashboardURL:         dashboardURL,
+		FilterURLs:           filterURLs,
+		SortURLs:             sortURLs,
 		BackendStatusKind:    status.Kind,
 		BackendStatusMessage: status.Message,
 	}, nil
@@ -720,6 +735,42 @@ func defaultViewParams() viewParams {
 	return viewParams{Filter: "all", Sort: "addedAt", Dir: "desc"}
 }
 
+func defaultSortDir(sortKey string) string {
+	if sortKey == "name" || sortKey == "state" {
+		return "asc"
+	}
+	return "desc"
+}
+
+func controlURLs(params viewParams) (string, map[string]string, map[string]string) {
+	dashboardURL := dashboardURLForParams(params)
+
+	filterURLs := make(map[string]string, 5)
+	for _, filter := range []string{"all", "downloading", "seeding", "complete", "stopped"} {
+		next := params
+		next.Filter = filter
+		filterURLs[filter] = dashboardURLForParams(next)
+	}
+
+	sortURLs := make(map[string]string, 11)
+	for _, sortKey := range []string{"name", "state", "addedAt", "progress", "etaSeconds", "ratio", "peers", "seeds", "downRate", "upRate", "sizeBytes"} {
+		next := params
+		next.Sort = sortKey
+		if params.Sort == sortKey {
+			if params.Dir == "asc" {
+				next.Dir = "desc"
+			} else {
+				next.Dir = "asc"
+			}
+		} else {
+			next.Dir = defaultSortDir(sortKey)
+		}
+		sortURLs[sortKey] = dashboardURLForParams(next)
+	}
+
+	return dashboardURL, filterURLs, sortURLs
+}
+
 func isValidFilter(v string) bool {
 	switch v {
 	case "all", "downloading", "seeding", "complete", "stopped", "unknown":
@@ -739,6 +790,14 @@ func isValidSort(v string) bool {
 }
 
 func streamURLForParams(params viewParams) string {
+	return urlForParams("/ui/stream", params)
+}
+
+func dashboardURLForParams(params viewParams) string {
+	return urlForParams("/ui/dashboard", params)
+}
+
+func urlForParams(base string, params viewParams) string {
 	values := url.Values{}
 	if params.Query != "" {
 		values.Set("q", params.Query)
@@ -757,9 +816,9 @@ func streamURLForParams(params viewParams) string {
 	}
 	encoded := values.Encode()
 	if encoded == "" {
-		return "/ui/stream"
+		return base
 	}
-	return "/ui/stream?" + encoded
+	return base + "?" + encoded
 }
 
 func normalizeState(raw string) string {

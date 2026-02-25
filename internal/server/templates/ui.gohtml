@@ -40,21 +40,35 @@
           hx-include="#view-state"
           hx-confirm="Remove selected torrent?">Remove</button>
         <button type="button" id="refresh" class="secondary"
-          hx-get="/ui/dashboard"
+          hx-get="{{.DashboardURL}}"
           hx-target="#dashboard"
-          hx-swap="outerHTML"
-          hx-include="#view-state">Refresh</button>
+          hx-swap="outerHTML">Refresh</button>
       </div>
     </div>
     <div class="controls-divider"></div>
     <div class="controls-section">
       <div class="section-label">Filter View</div>
       <div class="filter-row" id="filters">
-        <button type="button" data-filter="all" class="{{if eq .Params.Filter "all"}}active{{end}}">All</button>
-        <button type="button" data-filter="downloading" class="{{if eq .Params.Filter "downloading"}}active{{end}}">Downloading</button>
-        <button type="button" data-filter="seeding" class="{{if eq .Params.Filter "seeding"}}active{{end}}">Seeding</button>
-        <button type="button" data-filter="complete" class="{{if eq .Params.Filter "complete"}}active{{end}}">Complete</button>
-        <button type="button" data-filter="stopped" class="{{if eq .Params.Filter "stopped"}}active{{end}}">Stopped</button>
+        <button type="button" data-filter="all" class="{{if eq .Params.Filter "all"}}active{{end}}"
+          hx-get="{{index .FilterURLs "all"}}"
+          hx-target="#dashboard"
+          hx-swap="outerHTML">All</button>
+        <button type="button" data-filter="downloading" class="{{if eq .Params.Filter "downloading"}}active{{end}}"
+          hx-get="{{index .FilterURLs "downloading"}}"
+          hx-target="#dashboard"
+          hx-swap="outerHTML">Downloading</button>
+        <button type="button" data-filter="seeding" class="{{if eq .Params.Filter "seeding"}}active{{end}}"
+          hx-get="{{index .FilterURLs "seeding"}}"
+          hx-target="#dashboard"
+          hx-swap="outerHTML">Seeding</button>
+        <button type="button" data-filter="complete" class="{{if eq .Params.Filter "complete"}}active{{end}}"
+          hx-get="{{index .FilterURLs "complete"}}"
+          hx-target="#dashboard"
+          hx-swap="outerHTML">Complete</button>
+        <button type="button" data-filter="stopped" class="{{if eq .Params.Filter "stopped"}}active{{end}}"
+          hx-get="{{index .FilterURLs "stopped"}}"
+          hx-target="#dashboard"
+          hx-swap="outerHTML">Stopped</button>
       </div>
     </div>
   </section>
@@ -82,17 +96,17 @@
         </colgroup>
         <thead>
           <tr>
-            <th data-col="name"><button type="button" class="sort-btn" data-sort="name">Name{{if eq .Params.Sort "name"}} {{if eq .Params.Dir "asc"}}▲{{else}}▼{{end}}{{end}}</button></th>
-            <th data-col="state"><button type="button" class="sort-btn" data-sort="state">State{{if eq .Params.Sort "state"}} {{if eq .Params.Dir "asc"}}▲{{else}}▼{{end}}{{end}}</button></th>
-            <th data-col="addedAt"><button type="button" class="sort-btn" data-sort="addedAt">Added{{if eq .Params.Sort "addedAt"}} {{if eq .Params.Dir "asc"}}▲{{else}}▼{{end}}{{end}}</button></th>
-            <th data-col="progress"><button type="button" class="sort-btn" data-sort="progress">Done{{if eq .Params.Sort "progress"}} {{if eq .Params.Dir "asc"}}▲{{else}}▼{{end}}{{end}}</button></th>
-            <th data-col="etaSeconds"><button type="button" class="sort-btn" data-sort="etaSeconds">ETA{{if eq .Params.Sort "etaSeconds"}} {{if eq .Params.Dir "asc"}}▲{{else}}▼{{end}}{{end}}</button></th>
-            <th data-col="ratio"><button type="button" class="sort-btn" data-sort="ratio">Ratio{{if eq .Params.Sort "ratio"}} {{if eq .Params.Dir "asc"}}▲{{else}}▼{{end}}{{end}}</button></th>
-            <th data-col="peers"><button type="button" class="sort-btn" data-sort="peers">Peers{{if eq .Params.Sort "peers"}} {{if eq .Params.Dir "asc"}}▲{{else}}▼{{end}}{{end}}</button></th>
-            <th data-col="seeds"><button type="button" class="sort-btn" data-sort="seeds">Seeds{{if eq .Params.Sort "seeds"}} {{if eq .Params.Dir "asc"}}▲{{else}}▼{{end}}{{end}}</button></th>
-            <th data-col="downRate"><button type="button" class="sort-btn" data-sort="downRate">Down{{if eq .Params.Sort "downRate"}} {{if eq .Params.Dir "asc"}}▲{{else}}▼{{end}}{{end}}</button></th>
-            <th data-col="upRate"><button type="button" class="sort-btn" data-sort="upRate">Up{{if eq .Params.Sort "upRate"}} {{if eq .Params.Dir "asc"}}▲{{else}}▼{{end}}{{end}}</button></th>
-            <th data-col="sizeBytes"><button type="button" class="sort-btn" data-sort="sizeBytes">Size{{if eq .Params.Sort "sizeBytes"}} {{if eq .Params.Dir "asc"}}▲{{else}}▼{{end}}{{end}}</button></th>
+            <th data-col="name"><button type="button" class="sort-btn" data-sort="name" hx-get="{{index .SortURLs "name"}}" hx-target="#dashboard" hx-swap="outerHTML">Name{{if eq .Params.Sort "name"}} {{if eq .Params.Dir "asc"}}▲{{else}}▼{{end}}{{end}}</button></th>
+            <th data-col="state"><button type="button" class="sort-btn" data-sort="state" hx-get="{{index .SortURLs "state"}}" hx-target="#dashboard" hx-swap="outerHTML">State{{if eq .Params.Sort "state"}} {{if eq .Params.Dir "asc"}}▲{{else}}▼{{end}}{{end}}</button></th>
+            <th data-col="addedAt"><button type="button" class="sort-btn" data-sort="addedAt" hx-get="{{index .SortURLs "addedAt"}}" hx-target="#dashboard" hx-swap="outerHTML">Added{{if eq .Params.Sort "addedAt"}} {{if eq .Params.Dir "asc"}}▲{{else}}▼{{end}}{{end}}</button></th>
+            <th data-col="progress"><button type="button" class="sort-btn" data-sort="progress" hx-get="{{index .SortURLs "progress"}}" hx-target="#dashboard" hx-swap="outerHTML">Done{{if eq .Params.Sort "progress"}} {{if eq .Params.Dir "asc"}}▲{{else}}▼{{end}}{{end}}</button></th>
+            <th data-col="etaSeconds"><button type="button" class="sort-btn" data-sort="etaSeconds" hx-get="{{index .SortURLs "etaSeconds"}}" hx-target="#dashboard" hx-swap="outerHTML">ETA{{if eq .Params.Sort "etaSeconds"}} {{if eq .Params.Dir "asc"}}▲{{else}}▼{{end}}{{end}}</button></th>
+            <th data-col="ratio"><button type="button" class="sort-btn" data-sort="ratio" hx-get="{{index .SortURLs "ratio"}}" hx-target="#dashboard" hx-swap="outerHTML">Ratio{{if eq .Params.Sort "ratio"}} {{if eq .Params.Dir "asc"}}▲{{else}}▼{{end}}{{end}}</button></th>
+            <th data-col="peers"><button type="button" class="sort-btn" data-sort="peers" hx-get="{{index .SortURLs "peers"}}" hx-target="#dashboard" hx-swap="outerHTML">Peers{{if eq .Params.Sort "peers"}} {{if eq .Params.Dir "asc"}}▲{{else}}▼{{end}}{{end}}</button></th>
+            <th data-col="seeds"><button type="button" class="sort-btn" data-sort="seeds" hx-get="{{index .SortURLs "seeds"}}" hx-target="#dashboard" hx-swap="outerHTML">Seeds{{if eq .Params.Sort "seeds"}} {{if eq .Params.Dir "asc"}}▲{{else}}▼{{end}}{{end}}</button></th>
+            <th data-col="downRate"><button type="button" class="sort-btn" data-sort="downRate" hx-get="{{index .SortURLs "downRate"}}" hx-target="#dashboard" hx-swap="outerHTML">Down{{if eq .Params.Sort "downRate"}} {{if eq .Params.Dir "asc"}}▲{{else}}▼{{end}}{{end}}</button></th>
+            <th data-col="upRate"><button type="button" class="sort-btn" data-sort="upRate" hx-get="{{index .SortURLs "upRate"}}" hx-target="#dashboard" hx-swap="outerHTML">Up{{if eq .Params.Sort "upRate"}} {{if eq .Params.Dir "asc"}}▲{{else}}▼{{end}}{{end}}</button></th>
+            <th data-col="sizeBytes"><button type="button" class="sort-btn" data-sort="sizeBytes" hx-get="{{index .SortURLs "sizeBytes"}}" hx-target="#dashboard" hx-swap="outerHTML">Size{{if eq .Params.Sort "sizeBytes"}} {{if eq .Params.Dir "asc"}}▲{{else}}▼{{end}}{{end}}</button></th>
           </tr>
         </thead>
         {{template "table" .}}

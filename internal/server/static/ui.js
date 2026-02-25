@@ -12,14 +12,6 @@
   let messageHideTimer = 0;
   let backendStatusStream = null;
 
-  function dashboardEl() {
-    return document.querySelector("#dashboard");
-  }
-
-  function viewStateForm() {
-    return document.querySelector("#view-state");
-  }
-
   function inputEl(id) {
     return document.querySelector("#" + id);
   }
@@ -280,72 +272,6 @@
     return true;
   }
 
-  function viewValues() {
-    const form = viewStateForm();
-    if (!form) {
-      return {};
-    }
-
-    const values = {};
-    const data = new FormData(form);
-    for (const pair of data.entries()) {
-      const key = pair[0];
-      const value = pair[1];
-      if (typeof value === "string") {
-        values[key] = value;
-      }
-    }
-    return values;
-  }
-
-  function refreshDashboard() {
-    if (!window.htmx || !dashboardEl()) {
-      return;
-    }
-    setConnectionState("connecting");
-    window.htmx.ajax("GET", "/ui/dashboard", {
-      target: "#dashboard",
-      swap: "outerHTML",
-      values: viewValues(),
-    });
-  }
-
-  function labelForSort(key) {
-    switch (key) {
-      case "name":
-        return "Name";
-      case "state":
-        return "State";
-      case "addedAt":
-        return "Added";
-      case "progress":
-        return "Done";
-      case "etaSeconds":
-        return "ETA";
-      case "ratio":
-        return "Ratio";
-      case "peers":
-        return "Peers";
-      case "seeds":
-        return "Seeds";
-      case "downRate":
-        return "Down";
-      case "upRate":
-        return "Up";
-      case "sizeBytes":
-        return "Size";
-      default:
-        return key;
-    }
-  }
-
-  function defaultDir(sortKey) {
-    if (sortKey === "name" || sortKey === "state") {
-      return "asc";
-    }
-    return "desc";
-  }
-
   function closeAddDialog() {
     const dialog = document.querySelector("#add-dialog");
     if (!dialog) {
@@ -468,38 +394,9 @@
     }
   }
 
-  function syncFilterButtons() {
-    const filter = inputEl("filter-input");
-    const current = filter ? filter.value : "all";
-    const buttons = document.querySelectorAll("#filters button[data-filter]");
-    for (const button of buttons) {
-      button.classList.toggle("active", button.dataset.filter === current);
-    }
-  }
-
-  function syncSortLabels() {
-    const sortInput = inputEl("sort-input");
-    const dirInput = inputEl("dir-input");
-    const sort = sortInput ? sortInput.value : "addedAt";
-    const dir = dirInput ? dirInput.value : "desc";
-
-    const buttons = document.querySelectorAll("#torrent-table .sort-btn[data-sort]");
-    for (const button of buttons) {
-      const key = button.dataset.sort || "";
-      const label = labelForSort(key);
-      if (key === sort) {
-        button.textContent = label + " " + (dir === "asc" ? "▲" : "▼");
-      } else {
-        button.textContent = label;
-      }
-    }
-  }
-
   function syncDashboard() {
     syncSelection();
     syncActionButtons();
-    syncFilterButtons();
-    syncSortLabels();
     syncBackendFromStats();
     setConnectionDot(connectionState);
     if (!captureFlashMessage()) {
@@ -555,38 +452,6 @@
     const row = target.closest("#torrents-body tr[data-hash]");
     if (row) {
       setSelectedHash(row.dataset.hash || "");
-      return;
-    }
-
-    const sortBtn = target.closest("#torrent-table .sort-btn[data-sort]");
-    if (sortBtn) {
-      event.preventDefault();
-      const nextSort = sortBtn.dataset.sort || "addedAt";
-      const sortInput = inputEl("sort-input");
-      const dirInput = inputEl("dir-input");
-      if (!sortInput || !dirInput) {
-        return;
-      }
-
-      if (sortInput.value === nextSort) {
-        dirInput.value = dirInput.value === "asc" ? "desc" : "asc";
-      } else {
-        sortInput.value = nextSort;
-        dirInput.value = defaultDir(nextSort);
-      }
-      refreshDashboard();
-      return;
-    }
-
-    const filterBtn = target.closest("#filters button[data-filter]");
-    if (filterBtn) {
-      event.preventDefault();
-      const filterInput = inputEl("filter-input");
-      if (!filterInput) {
-        return;
-      }
-      filterInput.value = filterBtn.dataset.filter || "all";
-      refreshDashboard();
       return;
     }
 

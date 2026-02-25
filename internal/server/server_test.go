@@ -109,6 +109,36 @@ func TestDashboardEndpointRendersTorrentRows(t *testing.T) {
 	}
 }
 
+func TestDashboardRendersFilterAndSortURLs(t *testing.T) {
+	s, err := New(&mockService{
+		listFn: func(context.Context) ([]domain.Torrent, error) {
+			return []domain.Torrent{{Hash: "abc", Name: "Ubuntu ISO", State: "downloading"}}, nil
+		},
+	})
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/ui/dashboard?filter=all&sort=addedAt&dir=desc&selected=abc", nil)
+	rr := httptest.NewRecorder()
+	s.Handler().ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d, body=%s", rr.Code, rr.Body.String())
+	}
+
+	body := rr.Body.String()
+	if !strings.Contains(body, `hx-get="/ui/dashboard?dir=desc&amp;filter=downloading&amp;selected=abc&amp;sort=addedAt"`) {
+		t.Fatalf("expected downloading filter URL preserving params, body=%s", body)
+	}
+	if !strings.Contains(body, `hx-get="/ui/dashboard?dir=asc&amp;filter=all&amp;selected=abc&amp;sort=addedAt"`) {
+		t.Fatalf("expected active sort toggle URL, body=%s", body)
+	}
+	if !strings.Contains(body, `hx-get="/ui/dashboard?dir=asc&amp;filter=all&amp;selected=abc&amp;sort=name"`) {
+		t.Fatalf("expected sort URL default direction for name, body=%s", body)
+	}
+}
+
 func TestUIPageHasCacheBustedUIScript(t *testing.T) {
 	s, err := New(&mockService{})
 	if err != nil {
