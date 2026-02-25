@@ -8,6 +8,7 @@ const STORAGE_KEYS = {
 };
 const state = {
   connection: "offline",
+  dismissedClientError: "",
 };
 
 function messageBoxEl() {
@@ -50,7 +51,12 @@ function showErrorMessage(text) {
   }
 
   const normalizedText = String(text || "").trim();
+  if (normalizedText !== "" && state.dismissedClientError === normalizedText) {
+    return;
+  }
+
   textEl.textContent = normalizedText;
+  box.setAttribute("data-client-error", "true");
   box.classList.remove("message-info", "message-ok", "message-error");
   if (normalizedText === "") {
     box.classList.add("is-hidden");
@@ -66,6 +72,9 @@ function renderConnection() {
 
 function setConnectionState(nextState) {
   state.connection = nextState;
+  if (nextState === "online") {
+    state.dismissedClientError = "";
+  }
   renderConnection();
 }
 
@@ -131,6 +140,28 @@ function initDashboardUi() {
     if (isDashboardTarget(event.detail?.target)) {
       persistCurrentViewState();
     }
+  });
+
+  document.body.addEventListener("click", function (event) {
+    const closeButton = event.target?.closest?.("#form-message-close");
+    if (!closeButton) {
+      return;
+    }
+
+    const box = messageBoxEl();
+    const textEl = messageTextEl();
+    if (!box || !textEl) {
+      return;
+    }
+    if (box.getAttribute("data-client-error") !== "true") {
+      return;
+    }
+
+    event.preventDefault();
+    state.dismissedClientError = String(textEl.textContent || "").trim();
+    textEl.textContent = "";
+    box.classList.add("is-hidden");
+    box.removeAttribute("data-client-error");
   });
 }
 
