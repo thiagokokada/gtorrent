@@ -7,11 +7,11 @@ import (
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
-	"regexp"
 	"strings"
 	"testing"
 
 	"github.com/thiagokokada/gtorrent/internal/domain"
+	"golang.org/x/net/html"
 )
 
 type mockService struct {
@@ -30,6 +30,71 @@ type mockService struct {
 type testFlusher struct{}
 
 func (testFlusher) Flush() {}
+
+func parseHTML(t *testing.T, body string) *html.Node {
+	t.Helper()
+
+	doc, err := html.Parse(strings.NewReader(body))
+	if err != nil {
+		t.Fatalf("html parse error = %v", err)
+	}
+	return doc
+}
+
+func findElement(root *html.Node, pred func(*html.Node) bool) *html.Node {
+	var walk func(*html.Node) *html.Node
+	walk = func(n *html.Node) *html.Node {
+		if n == nil {
+			return nil
+		}
+		if pred(n) {
+			return n
+		}
+		for c := n.FirstChild; c != nil; c = c.NextSibling {
+			if found := walk(c); found != nil {
+				return found
+			}
+		}
+		return nil
+	}
+	return walk(root)
+}
+
+func getAttr(n *html.Node, key string) (string, bool) {
+	for _, attr := range n.Attr {
+		if attr.Key == key {
+			return attr.Val, true
+		}
+	}
+	return "", false
+}
+
+func hasAttr(n *html.Node, key string) bool {
+	_, ok := getAttr(n, key)
+	return ok
+}
+
+func hasAttrs(n *html.Node, attrs map[string]string) bool {
+	for key, val := range attrs {
+		got, ok := getAttr(n, key)
+		if !ok || got != val {
+			return false
+		}
+	}
+	return true
+}
+
+func isLowerHex(s string) bool {
+	if s == "" {
+		return false
+	}
+	for _, r := range s {
+		if (r < '0' || r > '9') && (r < 'a' || r > 'f') {
+			return false
+		}
+	}
+	return true
+}
 
 func (m *mockService) List(ctx context.Context) ([]domain.Torrent, error) {
 	if m.listFn == nil {
@@ -140,12 +205,22 @@ func TestDashboardEndpointRendersTorrentRows(t *testing.T) {
 	if !strings.Contains(body, "data-hash=\"abc\"") || !strings.Contains(body, `hx-get="/ui/dashboard?dir=desc&amp;filter=all&amp;selected=abc&amp;sort=addedAt"`) {
 		t.Fatalf("expected selectable row URL, body=%s", body)
 	}
-	rowSelectPattern := `(?s)<tr data-hash="abc" class="".*hx-get="/ui/dashboard\?dir=desc&amp;filter=all&amp;selected=abc&amp;sort=addedAt".*hx-swap="none"`
-	matched, err := regexp.MatchString(rowSelectPattern, body)
-	if err != nil {
-		t.Fatalf("regexp error = %v", err)
-	}
-	if !matched {
+	doc := parseHTML(t, body)
+	row := findElement(doc, func(n *html.Node) bool {
+		if n.Type != html.ElementNode || n.Data != "tr" {
+			return false
+		}
+		if !hasAttrs(n, map[string]string{
+			"data-hash": "abc",
+			"hx-get":    "/ui/dashboard?dir=desc&filter=all&selected=abc&sort=addedAt",
+			"hx-swap":   "none",
+		}) {
+			return false
+		}
+		classVal, ok := getAttr(n, "class")
+		return ok && classVal == ""
+	})
+	if row == nil {
 		t.Fatalf("expected row selection to use fragment mode, body=%s", body)
 	}
 }
@@ -172,34 +247,53 @@ func TestDashboardRendersFilterAndSortURLs(t *testing.T) {
 	if !strings.Contains(body, `hx-get="/ui/dashboard?dir=desc&amp;filter=downloading&amp;selected=abc&amp;sort=addedAt"`) {
 		t.Fatalf("expected downloading filter URL preserving params, body=%s", body)
 	}
-	filterPattern := `(?s)data-filter="downloading"[^>]*hx-get="/ui/dashboard\?dir=desc&amp;filter=downloading&amp;selected=abc&amp;sort=addedAt"[^>]*hx-target="#dashboard"[^>]*hx-swap="outerHTML"`
-	filterMatched, err := regexp.MatchString(filterPattern, body)
-	if err != nil {
-		t.Fatalf("regexp error = %v", err)
-	}
-	if !filterMatched {
-		t.Fatalf("expected filter button to refresh full dashboard, body=%s", body)
-	}
 	if !strings.Contains(body, `hx-get="/ui/dashboard?dir=asc&amp;filter=all&amp;selected=abc&amp;sort=addedAt"`) {
 		t.Fatalf("expected active sort toggle URL, body=%s", body)
-	}
-	sortPattern := `(?s)data-sort="addedAt"[^>]*hx-get="/ui/dashboard\?dir=asc&amp;filter=all&amp;selected=abc&amp;sort=addedAt"[^>]*hx-target="#dashboard"[^>]*hx-swap="outerHTML"`
-	sortMatched, err := regexp.MatchString(sortPattern, body)
-	if err != nil {
-		t.Fatalf("regexp error = %v", err)
-	}
-	if !sortMatched {
-		t.Fatalf("expected active sort button to refresh full dashboard, body=%s", body)
 	}
 	if !strings.Contains(body, `hx-get="/ui/dashboard?dir=asc&amp;filter=all&amp;selected=abc&amp;sort=name"`) {
 		t.Fatalf("expected sort URL default direction for name, body=%s", body)
 	}
-	refreshPattern := `(?s)id="refresh"[^>]*hx-get="/ui/dashboard\?dir=desc&amp;filter=all&amp;selected=abc&amp;sort=addedAt"[^>]*hx-target="#dashboard"[^>]*hx-swap="outerHTML"`
-	refreshMatched, err := regexp.MatchString(refreshPattern, body)
-	if err != nil {
-		t.Fatalf("regexp error = %v", err)
+	doc := parseHTML(t, body)
+	filterButton := findElement(doc, func(n *html.Node) bool {
+		if n.Type != html.ElementNode {
+			return false
+		}
+		return hasAttrs(n, map[string]string{
+			"data-filter": "downloading",
+			"hx-get":      "/ui/dashboard?dir=desc&filter=downloading&selected=abc&sort=addedAt",
+			"hx-target":   "#dashboard",
+			"hx-swap":     "outerHTML",
+		})
+	})
+	if filterButton == nil {
+		t.Fatalf("expected filter button to refresh full dashboard, body=%s", body)
 	}
-	if !refreshMatched {
+	sortButton := findElement(doc, func(n *html.Node) bool {
+		if n.Type != html.ElementNode {
+			return false
+		}
+		return hasAttrs(n, map[string]string{
+			"data-sort": "addedAt",
+			"hx-get":    "/ui/dashboard?dir=asc&filter=all&selected=abc&sort=addedAt",
+			"hx-target": "#dashboard",
+			"hx-swap":   "outerHTML",
+		})
+	})
+	if sortButton == nil {
+		t.Fatalf("expected active sort button to refresh full dashboard, body=%s", body)
+	}
+	refreshButton := findElement(doc, func(n *html.Node) bool {
+		if n.Type != html.ElementNode {
+			return false
+		}
+		return hasAttrs(n, map[string]string{
+			"id":        "refresh",
+			"hx-get":    "/ui/dashboard?dir=desc&filter=all&selected=abc&sort=addedAt",
+			"hx-target": "#dashboard",
+			"hx-swap":   "outerHTML",
+		})
+	})
+	if refreshButton == nil {
 		t.Fatalf("expected refresh button to refresh full dashboard, body=%s", body)
 	}
 }
@@ -494,11 +588,29 @@ func TestUIPageHasCacheBustedUIScript(t *testing.T) {
 	}
 
 	body := rr.Body.String()
-	matched, err := regexp.MatchString(`<script type="module" defer src="/ui\.js\?v=[0-9a-f]{16}"></script>`, body)
-	if err != nil {
-		t.Fatalf("regexp error = %v", err)
-	}
-	if !matched {
+	doc := parseHTML(t, body)
+	scriptTag := findElement(doc, func(n *html.Node) bool {
+		if n.Type != html.ElementNode || n.Data != "script" {
+			return false
+		}
+		if !hasAttrs(n, map[string]string{"type": "module"}) {
+			return false
+		}
+		if !hasAttr(n, "defer") {
+			return false
+		}
+		src, ok := getAttr(n, "src")
+		if !ok {
+			return false
+		}
+		const prefix = "/ui.js?v="
+		if !strings.HasPrefix(src, prefix) {
+			return false
+		}
+		cacheKey := strings.TrimPrefix(src, prefix)
+		return len(cacheKey) == 16 && isLowerHex(cacheKey)
+	})
+	if scriptTag == nil {
 		t.Fatalf("expected cache-busted ui.js script tag, body=%s", body)
 	}
 	if !strings.Contains(body, `hx-get="/ui/dashboard?dir=desc&amp;filter=all&amp;sort=addedAt"`) {
