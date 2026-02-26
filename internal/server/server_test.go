@@ -84,6 +84,63 @@ func hasAttrs(n *html.Node, attrs map[string]string) bool {
 	return true
 }
 
+func findByID(root *html.Node, id string) *html.Node {
+	return findElement(root, func(n *html.Node) bool {
+		if n.Type != html.ElementNode {
+			return false
+		}
+		val, ok := getAttr(n, "id")
+		return ok && val == id
+	})
+}
+
+func hasClass(n *html.Node, class string) bool {
+	val, ok := getAttr(n, "class")
+	if !ok {
+		return false
+	}
+	for _, candidate := range strings.Fields(val) {
+		if candidate == class {
+			return true
+		}
+	}
+	return false
+}
+
+func hasClasses(n *html.Node, classes ...string) bool {
+	for _, class := range classes {
+		if !hasClass(n, class) {
+			return false
+		}
+	}
+	return true
+}
+
+func findByClass(root *html.Node, class string) *html.Node {
+	return findElement(root, func(n *html.Node) bool {
+		if n.Type != html.ElementNode {
+			return false
+		}
+		return hasClass(n, class)
+	})
+}
+
+func textContains(root *html.Node, substring string) bool {
+	var walk func(*html.Node) bool
+	walk = func(n *html.Node) bool {
+		if n.Type == html.TextNode && strings.Contains(n.Data, substring) {
+			return true
+		}
+		for c := n.FirstChild; c != nil; c = c.NextSibling {
+			if walk(c) {
+				return true
+			}
+		}
+		return false
+	}
+	return walk(root)
+}
+
 func isLowerHex(s string) bool {
 	if s == "" {
 		return false
@@ -184,28 +241,29 @@ func TestDashboardEndpointRendersTorrentRows(t *testing.T) {
 		t.Fatalf("status = %d, body=%s", rr.Code, rr.Body.String())
 	}
 	body := rr.Body.String()
-	if !strings.Contains(body, "Ubuntu ISO") {
+	doc := parseHTML(t, body)
+	if !textContains(doc, "Ubuntu ISO") {
 		t.Fatalf("expected torrent row, body=%s", body)
 	}
-	if !strings.Contains(body, "id=\"toggle-selected\"") {
+	if findByID(doc, "toggle-selected") == nil {
 		t.Fatalf("expected top-bar action buttons, body=%s", body)
 	}
-	if !strings.Contains(body, `id="add-btn" class="primary">Add</button>`) {
+	addBtn := findByID(doc, "add-btn")
+	if addBtn == nil || !hasClass(addBtn, "primary") || !textContains(addBtn, "Add") {
 		t.Fatalf("expected add button enabled by default in add dialog, body=%s", body)
 	}
-	if !strings.Contains(body, `id="status-preserve" hx-preserve`) {
+	statusPreserve := findByID(doc, "status-preserve")
+	if statusPreserve == nil || !hasAttr(statusPreserve, "hx-preserve") {
 		t.Fatalf("expected preserved status wrapper, body=%s", body)
 	}
-	if !strings.Contains(body, `id="search-form" class="search-form"`) {
+	searchForm := findByID(doc, "search-form")
+	if searchForm == nil || !hasClass(searchForm, "search-form") {
 		t.Fatalf("expected search form in controls, body=%s", body)
 	}
-	if !strings.Contains(body, `id="search-query" name="q" value=""`) {
+	searchQuery := findByID(doc, "search-query")
+	if searchQuery == nil || !hasAttrs(searchQuery, map[string]string{"name": "q", "value": ""}) {
 		t.Fatalf("expected search input bound to q param, body=%s", body)
 	}
-	if !strings.Contains(body, "data-hash=\"abc\"") || !strings.Contains(body, `hx-get="/ui/dashboard?dir=desc&amp;filter=all&amp;selected=abc&amp;sort=addedAt"`) {
-		t.Fatalf("expected selectable row URL, body=%s", body)
-	}
-	doc := parseHTML(t, body)
 	row := findElement(doc, func(n *html.Node) bool {
 		if n.Type != html.ElementNode || n.Data != "tr" {
 			return false
@@ -244,15 +302,6 @@ func TestDashboardRendersFilterAndSortURLs(t *testing.T) {
 	}
 
 	body := rr.Body.String()
-	if !strings.Contains(body, `hx-get="/ui/dashboard?dir=desc&amp;filter=downloading&amp;selected=abc&amp;sort=addedAt"`) {
-		t.Fatalf("expected downloading filter URL preserving params, body=%s", body)
-	}
-	if !strings.Contains(body, `hx-get="/ui/dashboard?dir=asc&amp;filter=all&amp;selected=abc&amp;sort=addedAt"`) {
-		t.Fatalf("expected active sort toggle URL, body=%s", body)
-	}
-	if !strings.Contains(body, `hx-get="/ui/dashboard?dir=asc&amp;filter=all&amp;selected=abc&amp;sort=name"`) {
-		t.Fatalf("expected sort URL default direction for name, body=%s", body)
-	}
 	doc := parseHTML(t, body)
 	filterButton := findElement(doc, func(n *html.Node) bool {
 		if n.Type != html.ElementNode {
@@ -281,6 +330,18 @@ func TestDashboardRendersFilterAndSortURLs(t *testing.T) {
 	})
 	if sortButton == nil {
 		t.Fatalf("expected active sort button to refresh full dashboard, body=%s", body)
+	}
+	nameSortButton := findElement(doc, func(n *html.Node) bool {
+		if n.Type != html.ElementNode {
+			return false
+		}
+		return hasAttrs(n, map[string]string{
+			"data-sort": "name",
+			"hx-get":    "/ui/dashboard?dir=asc&filter=all&selected=abc&sort=name",
+		})
+	})
+	if nameSortButton == nil {
+		t.Fatalf("expected sort URL default direction for name, body=%s", body)
 	}
 	refreshButton := findElement(doc, func(n *html.Node) bool {
 		if n.Type != html.ElementNode {
@@ -317,16 +378,45 @@ func TestDashboardSearchPreservesQueryInControlURLs(t *testing.T) {
 	}
 
 	body := rr.Body.String()
-	if !strings.Contains(body, `id="search-query" name="q" value="ubuntu"`) {
+	doc := parseHTML(t, body)
+	searchQuery := findByID(doc, "search-query")
+	if searchQuery == nil || !hasAttrs(searchQuery, map[string]string{"name": "q", "value": "ubuntu"}) {
 		t.Fatalf("expected search input to keep current query, body=%s", body)
 	}
-	if !strings.Contains(body, `id="refresh"`) || !strings.Contains(body, `hx-get="/ui/dashboard?dir=desc&amp;filter=all&amp;q=ubuntu&amp;selected=abc&amp;sort=addedAt"`) {
+	refreshButton := findElement(doc, func(n *html.Node) bool {
+		if n.Type != html.ElementNode {
+			return false
+		}
+		return hasAttrs(n, map[string]string{
+			"id":     "refresh",
+			"hx-get": "/ui/dashboard?dir=desc&filter=all&q=ubuntu&selected=abc&sort=addedAt",
+		})
+	})
+	if refreshButton == nil {
 		t.Fatalf("expected refresh URL to preserve query, body=%s", body)
 	}
-	if !strings.Contains(body, `hx-get="/ui/dashboard?dir=desc&amp;filter=downloading&amp;q=ubuntu&amp;selected=abc&amp;sort=addedAt"`) {
+	filterButton := findElement(doc, func(n *html.Node) bool {
+		if n.Type != html.ElementNode {
+			return false
+		}
+		return hasAttrs(n, map[string]string{
+			"data-filter": "downloading",
+			"hx-get":      "/ui/dashboard?dir=desc&filter=downloading&q=ubuntu&selected=abc&sort=addedAt",
+		})
+	})
+	if filterButton == nil {
 		t.Fatalf("expected filter URL to preserve query, body=%s", body)
 	}
-	if !strings.Contains(body, `hx-get="/ui/dashboard?dir=asc&amp;filter=all&amp;q=ubuntu&amp;selected=abc&amp;sort=addedAt"`) {
+	sortButton := findElement(doc, func(n *html.Node) bool {
+		if n.Type != html.ElementNode {
+			return false
+		}
+		return hasAttrs(n, map[string]string{
+			"data-sort": "addedAt",
+			"hx-get":    "/ui/dashboard?dir=asc&filter=all&q=ubuntu&selected=abc&sort=addedAt",
+		})
+	})
+	if sortButton == nil {
 		t.Fatalf("expected sort URL to preserve query, body=%s", body)
 	}
 }
@@ -353,10 +443,11 @@ func TestDashboardSearchMatchesTorrentNameOnly(t *testing.T) {
 	}
 
 	body := rr.Body.String()
-	if !strings.Contains(body, "Ubuntu ISO") {
+	doc := parseHTML(t, body)
+	if !textContains(doc, "Ubuntu ISO") {
 		t.Fatalf("expected torrent matched by name, body=%s", body)
 	}
-	if strings.Contains(body, "Arch Linux") {
+	if textContains(doc, "Arch Linux") {
 		t.Fatalf("did not expect unmatched torrent in filtered results, body=%s", body)
 	}
 
@@ -369,10 +460,11 @@ func TestDashboardSearchMatchesTorrentNameOnly(t *testing.T) {
 	}
 
 	body = rr.Body.String()
-	if strings.Contains(body, "Ubuntu ISO") {
+	doc = parseHTML(t, body)
+	if textContains(doc, "Ubuntu ISO") {
 		t.Fatalf("did not expect hash-only match to pass name search, body=%s", body)
 	}
-	if !strings.Contains(body, "No torrents in this view") {
+	if !textContains(doc, "No torrents in this view") {
 		t.Fatalf("expected empty-state placeholder for non-matching name search, body=%s", body)
 	}
 }
@@ -399,10 +491,13 @@ func TestDashboardRendersSpeedLimitInputs(t *testing.T) {
 	}
 
 	body := rr.Body.String()
-	if !strings.Contains(body, `id="download-limit-kib"`) || !strings.Contains(body, `value="2048"`) {
+	doc := parseHTML(t, body)
+	downloadInput := findByID(doc, "download-limit-kib")
+	if downloadInput == nil || !hasAttrs(downloadInput, map[string]string{"value": "2048"}) {
 		t.Fatalf("expected download speed limit input value, body=%s", body)
 	}
-	if !strings.Contains(body, `id="upload-limit-kib"`) || !strings.Contains(body, `value="512"`) {
+	uploadInput := findByID(doc, "upload-limit-kib")
+	if uploadInput == nil || !hasAttrs(uploadInput, map[string]string{"value": "512"}) {
 		t.Fatalf("expected upload speed limit input value, body=%s", body)
 	}
 }
@@ -428,13 +523,27 @@ func TestDashboardRendersSelectedActionButtons(t *testing.T) {
 	}
 
 	body := rr.Body.String()
-	if !strings.Contains(body, `id="toggle-selected" class="secondary"`) || !strings.Contains(body, `hx-post="/ui/torrents/abc/stop"`) {
+	doc := parseHTML(t, body)
+	toggleButton := findByID(doc, "toggle-selected")
+	if toggleButton == nil || !hasClass(toggleButton, "secondary") || !hasAttrs(toggleButton, map[string]string{"hx-post": "/ui/torrents/abc/stop"}) {
 		t.Fatalf("expected selected running toggle button, body=%s", body)
 	}
-	if !strings.Contains(body, `hx-post="/ui/torrents/abc/recheck"`) {
+	recheckButton := findElement(doc, func(n *html.Node) bool {
+		if n.Type != html.ElementNode {
+			return false
+		}
+		return hasAttrs(n, map[string]string{"hx-post": "/ui/torrents/abc/recheck"})
+	})
+	if recheckButton == nil {
 		t.Fatalf("expected selected recheck button, body=%s", body)
 	}
-	if !strings.Contains(body, `hx-post="/ui/torrents/abc/remove"`) {
+	removeButton := findElement(doc, func(n *html.Node) bool {
+		if n.Type != html.ElementNode {
+			return false
+		}
+		return hasAttrs(n, map[string]string{"hx-post": "/ui/torrents/abc/remove"})
+	})
+	if removeButton == nil {
 		t.Fatalf("expected selected remove button, body=%s", body)
 	}
 }
@@ -459,25 +568,30 @@ func TestDashboardHTMXReturnsFragmentBundle(t *testing.T) {
 		t.Fatalf("status = %d, body=%s", rr.Code, rr.Body.String())
 	}
 	body := rr.Body.String()
-	if strings.Contains(body, `<section id="dashboard"`) {
+	doc := parseHTML(t, body)
+	if findByID(doc, "dashboard") != nil {
 		t.Fatalf("did not expect full dashboard for htmx fragment request, body=%s", body)
 	}
-	if !strings.Contains(body, `id="controls-panel" class="controls card" hx-swap-oob="outerHTML"`) {
+	controlsPanel := findByID(doc, "controls-panel")
+	if controlsPanel == nil || !hasClasses(controlsPanel, "controls", "card") || !hasAttrs(controlsPanel, map[string]string{"hx-swap-oob": "outerHTML"}) {
 		t.Fatalf("expected controls fragment oob swap, body=%s", body)
 	}
-	if !strings.Contains(body, `id="file-list" class="table-panel card" hx-swap-oob="outerHTML"`) {
+	fileList := findByID(doc, "file-list")
+	if fileList == nil || !hasClasses(fileList, "table-panel", "card") || !hasAttrs(fileList, map[string]string{"hx-swap-oob": "outerHTML"}) {
 		t.Fatalf("expected file-list fragment oob swap, body=%s", body)
 	}
-	if !strings.Contains(body, `id="view-state" hidden hx-swap-oob="outerHTML"`) {
+	viewState := findByID(doc, "view-state")
+	if viewState == nil || !hasAttr(viewState, "hidden") || !hasAttrs(viewState, map[string]string{"hx-swap-oob": "outerHTML"}) {
 		t.Fatalf("expected view-state fragment, body=%s", body)
 	}
-	if !strings.Contains(body, `id="global-stats" class="global-stats"`) || !strings.Contains(body, `hx-swap-oob="outerHTML"`) {
+	globalStats := findByID(doc, "global-stats")
+	if globalStats == nil || !hasClass(globalStats, "global-stats") || !hasAttrs(globalStats, map[string]string{"hx-swap-oob": "outerHTML"}) {
 		t.Fatalf("expected stats fragment oob swap, body=%s", body)
 	}
-	if strings.Contains(body, `id="add-dialog" class="add-dialog"`) {
+	if findByID(doc, "add-dialog") != nil {
 		t.Fatalf("did not expect add-dialog fragment for view navigation, body=%s", body)
 	}
-	if strings.Contains(body, `id="form-message"`) {
+	if findByID(doc, "form-message") != nil {
 		t.Fatalf("did not expect status fragment for view navigation, body=%s", body)
 	}
 }
@@ -503,28 +617,30 @@ func TestDashboardCancelAddHTMXReturnsAddDialogOnly(t *testing.T) {
 		t.Fatalf("status = %d, body=%s", rr.Code, rr.Body.String())
 	}
 	body := rr.Body.String()
-	if strings.Contains(body, `<section id="dashboard"`) {
+	doc := parseHTML(t, body)
+	if findByID(doc, "dashboard") != nil {
 		t.Fatalf("did not expect full dashboard for htmx fragment request, body=%s", body)
 	}
-	if !strings.Contains(body, `id="add-dialog" class="add-dialog" hx-swap-oob="outerHTML"`) {
+	addDialog := findByID(doc, "add-dialog")
+	if addDialog == nil || !hasClass(addDialog, "add-dialog") || !hasAttrs(addDialog, map[string]string{"hx-swap-oob": "outerHTML"}) {
 		t.Fatalf("expected add-dialog fragment oob swap, body=%s", body)
 	}
-	if strings.Contains(body, `id="add-dialog" class="add-dialog" open`) {
+	if addDialog != nil && hasAttr(addDialog, "open") {
 		t.Fatalf("did not expect open add-dialog for cancel-add, body=%s", body)
 	}
-	if strings.Contains(body, `id="file-list" class="table-panel card"`) {
+	if findByID(doc, "file-list") != nil {
 		t.Fatalf("did not expect file-list fragment for cancel-add, body=%s", body)
 	}
-	if strings.Contains(body, `id="controls-panel" class="controls card"`) {
+	if findByID(doc, "controls-panel") != nil {
 		t.Fatalf("did not expect controls fragment for cancel-add, body=%s", body)
 	}
-	if strings.Contains(body, `id="form-message"`) {
+	if findByID(doc, "form-message") != nil {
 		t.Fatalf("did not expect status fragment for cancel-add, body=%s", body)
 	}
-	if strings.Contains(body, `id="global-stats" class="global-stats"`) {
+	if findByID(doc, "global-stats") != nil {
 		t.Fatalf("did not expect stats fragment for cancel-add, body=%s", body)
 	}
-	if strings.Contains(body, `id="view-state" hidden`) {
+	if findByID(doc, "view-state") != nil {
 		t.Fatalf("did not expect view-state fragment for cancel-add, body=%s", body)
 	}
 }
@@ -550,25 +666,27 @@ func TestDashboardOpenAddHTMXReturnsOpenAddDialogOnly(t *testing.T) {
 		t.Fatalf("status = %d, body=%s", rr.Code, rr.Body.String())
 	}
 	body := rr.Body.String()
-	if strings.Contains(body, `<section id="dashboard"`) {
+	doc := parseHTML(t, body)
+	if findByID(doc, "dashboard") != nil {
 		t.Fatalf("did not expect full dashboard for htmx fragment request, body=%s", body)
 	}
-	if !strings.Contains(body, `id="add-dialog" class="add-dialog" open hx-swap-oob="outerHTML"`) {
+	addDialog := findByID(doc, "add-dialog")
+	if addDialog == nil || !hasClass(addDialog, "add-dialog") || !hasAttrs(addDialog, map[string]string{"hx-swap-oob": "outerHTML"}) || !hasAttr(addDialog, "open") {
 		t.Fatalf("expected open add-dialog fragment oob swap, body=%s", body)
 	}
-	if strings.Contains(body, `id="file-list" class="table-panel card"`) {
+	if findByID(doc, "file-list") != nil {
 		t.Fatalf("did not expect file-list fragment for open-add, body=%s", body)
 	}
-	if strings.Contains(body, `id="controls-panel" class="controls card"`) {
+	if findByID(doc, "controls-panel") != nil {
 		t.Fatalf("did not expect controls fragment for open-add, body=%s", body)
 	}
-	if strings.Contains(body, `id="form-message"`) {
+	if findByID(doc, "form-message") != nil {
 		t.Fatalf("did not expect status fragment for open-add, body=%s", body)
 	}
-	if strings.Contains(body, `id="global-stats" class="global-stats"`) {
+	if findByID(doc, "global-stats") != nil {
 		t.Fatalf("did not expect stats fragment for open-add, body=%s", body)
 	}
-	if strings.Contains(body, `id="view-state" hidden`) {
+	if findByID(doc, "view-state") != nil {
 		t.Fatalf("did not expect view-state fragment for open-add, body=%s", body)
 	}
 }
@@ -613,7 +731,13 @@ func TestUIPageHasCacheBustedUIScript(t *testing.T) {
 	if scriptTag == nil {
 		t.Fatalf("expected cache-busted ui.js script tag, body=%s", body)
 	}
-	if !strings.Contains(body, `hx-get="/ui/dashboard?dir=desc&amp;filter=all&amp;sort=addedAt"`) {
+	initialDashboard := findElement(doc, func(n *html.Node) bool {
+		if n.Type != html.ElementNode {
+			return false
+		}
+		return hasAttrs(n, map[string]string{"hx-get": "/ui/dashboard?dir=desc&filter=all&sort=addedAt"})
+	})
+	if initialDashboard == nil {
 		t.Fatalf("expected default dashboard load URL, body=%s", body)
 	}
 }
@@ -635,7 +759,14 @@ func TestUIPageUsesPersistedViewCookiesForInitialDashboardURL(t *testing.T) {
 		t.Fatalf("status = %d, body=%s", rr.Code, rr.Body.String())
 	}
 	body := rr.Body.String()
-	if !strings.Contains(body, `hx-get="/ui/dashboard?dir=asc&amp;filter=seeding&amp;sort=name"`) {
+	doc := parseHTML(t, body)
+	initialDashboard := findElement(doc, func(n *html.Node) bool {
+		if n.Type != html.ElementNode {
+			return false
+		}
+		return hasAttrs(n, map[string]string{"hx-get": "/ui/dashboard?dir=asc&filter=seeding&sort=name"})
+	})
+	if initialDashboard == nil {
 		t.Fatalf("expected dashboard load URL from cookies, body=%s", body)
 	}
 }
@@ -657,7 +788,14 @@ func TestUIPageQueryParamsOverridePersistedViewCookies(t *testing.T) {
 		t.Fatalf("status = %d, body=%s", rr.Code, rr.Body.String())
 	}
 	body := rr.Body.String()
-	if !strings.Contains(body, `hx-get="/ui/dashboard?dir=desc&amp;filter=downloading&amp;sort=ratio"`) {
+	doc := parseHTML(t, body)
+	initialDashboard := findElement(doc, func(n *html.Node) bool {
+		if n.Type != html.ElementNode {
+			return false
+		}
+		return hasAttrs(n, map[string]string{"hx-get": "/ui/dashboard?dir=desc&filter=downloading&sort=ratio"})
+	})
+	if initialDashboard == nil {
 		t.Fatalf("expected query params to override cookies, body=%s", body)
 	}
 }
@@ -676,10 +814,17 @@ func TestEmptyEndpointRendersHiddenStatusPlaceholder(t *testing.T) {
 		t.Fatalf("status = %d, body=%s", rr.Code, rr.Body.String())
 	}
 	body := rr.Body.String()
-	if !strings.Contains(body, `id="form-message"`) {
+	doc := parseHTML(t, body)
+	if findByID(doc, "form-message") == nil {
 		t.Fatalf("expected status placeholder, body=%s", body)
 	}
-	if !strings.Contains(body, "message-info is-hidden") {
+	hiddenMessage := findElement(doc, func(n *html.Node) bool {
+		if n.Type != html.ElementNode {
+			return false
+		}
+		return hasClasses(n, "message-info", "is-hidden")
+	})
+	if hiddenMessage == nil {
 		t.Fatalf("expected hidden placeholder message, body=%s", body)
 	}
 }
@@ -719,8 +864,10 @@ func TestAddTorrentMagnet(t *testing.T) {
 	if !called {
 		t.Fatalf("expected AddMagnet call")
 	}
-	if !strings.Contains(rr.Body.String(), "Torrent added") {
-		t.Fatalf("expected success flash, body=%s", rr.Body.String())
+	responseBody := rr.Body.String()
+	doc := parseHTML(t, responseBody)
+	if !textContains(doc, "Torrent added") {
+		t.Fatalf("expected success flash, body=%s", responseBody)
 	}
 }
 
@@ -760,16 +907,19 @@ func TestAddTorrentRequiresMagnetOrFile(t *testing.T) {
 		t.Fatalf("did not expect AddMagnet or AddTorrent call")
 	}
 	responseBody := rr.Body.String()
-	if !strings.Contains(responseBody, "provide a magnet link or a .torrent file") {
+	doc := parseHTML(t, responseBody)
+	if !textContains(doc, "provide a magnet link or a .torrent file") {
 		t.Fatalf("expected missing input error, body=%s", responseBody)
 	}
-	if !strings.Contains(responseBody, `class="add-form-error"`) {
+	if findByClass(doc, "add-form-error") == nil {
 		t.Fatalf("expected inline add form error, body=%s", responseBody)
 	}
-	if !strings.Contains(responseBody, `<dialog id="add-dialog" class="add-dialog" open>`) {
+	addDialog := findByID(doc, "add-dialog")
+	if addDialog == nil || !hasClass(addDialog, "add-dialog") || !hasAttr(addDialog, "open") {
 		t.Fatalf("expected add dialog to be open for validation error, body=%s", responseBody)
 	}
-	if strings.Contains(responseBody, `<span id="form-message-text">provide a magnet link or a .torrent file</span>`) {
+	formMessageText := findByID(doc, "form-message-text")
+	if formMessageText != nil && textContains(formMessageText, "provide a magnet link or a .torrent file") {
 		t.Fatalf("did not expect global status message for add form validation error, body=%s", responseBody)
 	}
 }
@@ -812,22 +962,24 @@ func TestAddTorrentRequiresMagnetOrFileHTMXReturnsFragments(t *testing.T) {
 		t.Fatalf("did not expect AddMagnet or AddTorrent call")
 	}
 	responseBody := rr.Body.String()
-	if strings.Contains(responseBody, `<section id="dashboard"`) {
+	doc := parseHTML(t, responseBody)
+	if findByID(doc, "dashboard") != nil {
 		t.Fatalf("did not expect full dashboard for htmx fragment request, body=%s", responseBody)
 	}
-	if !strings.Contains(responseBody, `class="add-form-error"`) {
+	if findByClass(doc, "add-form-error") == nil {
 		t.Fatalf("expected inline add form error, body=%s", responseBody)
 	}
-	if !strings.Contains(responseBody, `id="add-dialog" class="add-dialog" open hx-swap-oob="outerHTML"`) {
+	addDialog := findByID(doc, "add-dialog")
+	if addDialog == nil || !hasClass(addDialog, "add-dialog") || !hasAttr(addDialog, "open") || !hasAttrs(addDialog, map[string]string{"hx-swap-oob": "outerHTML"}) {
 		t.Fatalf("expected add-dialog fragment oob swap with open state, body=%s", responseBody)
 	}
-	if strings.Contains(responseBody, `id="controls-panel" class="controls card"`) {
+	if findByID(doc, "controls-panel") != nil {
 		t.Fatalf("did not expect controls fragment for add-form validation response, body=%s", responseBody)
 	}
-	if strings.Contains(responseBody, `id="form-message"`) {
+	if findByID(doc, "form-message") != nil {
 		t.Fatalf("did not expect status fragment for add-form validation response, body=%s", responseBody)
 	}
-	if strings.Contains(responseBody, `id="view-state" hidden`) {
+	if findByID(doc, "view-state") != nil {
 		t.Fatalf("did not expect view-state fragment for add-form validation response, body=%s", responseBody)
 	}
 }
@@ -860,16 +1012,28 @@ func TestAddTorrentMagnetErrorShowsInlineFormError(t *testing.T) {
 		t.Fatalf("status = %d, body=%s", rr.Code, rr.Body.String())
 	}
 	responseBody := rr.Body.String()
-	if !strings.Contains(responseBody, "invalid magnet URI") {
+	doc := parseHTML(t, responseBody)
+	if !textContains(doc, "invalid magnet URI") {
 		t.Fatalf("expected magnet error message, body=%s", responseBody)
 	}
-	if !strings.Contains(responseBody, `class="add-form-error"`) {
+	if findByClass(doc, "add-form-error") == nil {
 		t.Fatalf("expected inline add form error, body=%s", responseBody)
 	}
-	if !strings.Contains(responseBody, `<dialog id="add-dialog" class="add-dialog" open>`) {
+	addDialog := findByID(doc, "add-dialog")
+	if addDialog == nil || !hasClass(addDialog, "add-dialog") || !hasAttr(addDialog, "open") {
 		t.Fatalf("expected add dialog to be open for validation error, body=%s", responseBody)
 	}
-	if !strings.Contains(responseBody, `name="magnet" placeholder="magnet:?xt=urn:btih:..." value="magnet:?xt=urn:btih:invalid"`) {
+	magnetInput := findElement(doc, func(n *html.Node) bool {
+		if n.Type != html.ElementNode {
+			return false
+		}
+		return hasAttrs(n, map[string]string{
+			"name":        "magnet",
+			"placeholder": "magnet:?xt=urn:btih:...",
+			"value":       "magnet:?xt=urn:btih:invalid",
+		})
+	})
+	if magnetInput == nil {
 		t.Fatalf("expected magnet field value to be preserved, body=%s", responseBody)
 	}
 }
@@ -907,10 +1071,17 @@ func TestSetSpeedLimits(t *testing.T) {
 		t.Fatalf("expected SetSpeedLimits call")
 	}
 	body := rr.Body.String()
-	if !strings.Contains(body, "Speed limits updated") {
+	doc := parseHTML(t, body)
+	if !textContains(doc, "Speed limits updated") {
 		t.Fatalf("expected success flash, body=%s", body)
 	}
-	if !strings.Contains(body, `class="message-autodismiss"`) || !strings.Contains(body, `hx-trigger="load delay:4s"`) {
+	autoDismiss := findElement(doc, func(n *html.Node) bool {
+		if n.Type != html.ElementNode {
+			return false
+		}
+		return hasClass(n, "message-autodismiss") && hasAttrs(n, map[string]string{"hx-trigger": "load delay:4s"})
+	})
+	if autoDismiss == nil {
 		t.Fatalf("expected auto-dismiss marker for non-error flash, body=%s", body)
 	}
 }
@@ -950,22 +1121,24 @@ func TestSetSpeedLimitsHTMXReturnsControlsAndStatusOnly(t *testing.T) {
 		t.Fatalf("expected SetSpeedLimits call")
 	}
 	body := rr.Body.String()
-	if strings.Contains(body, `<section id="dashboard"`) {
+	doc := parseHTML(t, body)
+	if findByID(doc, "dashboard") != nil {
 		t.Fatalf("did not expect full dashboard for htmx fragment request, body=%s", body)
 	}
-	if !strings.Contains(body, `id="controls-panel" class="controls card" hx-swap-oob="outerHTML"`) {
+	controlsPanel := findByID(doc, "controls-panel")
+	if controlsPanel == nil || !hasClasses(controlsPanel, "controls", "card") || !hasAttrs(controlsPanel, map[string]string{"hx-swap-oob": "outerHTML"}) {
 		t.Fatalf("expected controls fragment oob swap, body=%s", body)
 	}
-	if !strings.Contains(body, `id="form-message"`) {
+	if findByID(doc, "form-message") == nil {
 		t.Fatalf("expected status fragment in response, body=%s", body)
 	}
-	if strings.Contains(body, `id="file-list" class="table-panel card"`) {
+	if findByID(doc, "file-list") != nil {
 		t.Fatalf("did not expect file-list fragment for speed limit update, body=%s", body)
 	}
-	if strings.Contains(body, `id="global-stats" class="global-stats"`) {
+	if findByID(doc, "global-stats") != nil {
 		t.Fatalf("did not expect stats fragment for speed limit update, body=%s", body)
 	}
-	if strings.Contains(body, `id="view-state" hidden`) {
+	if findByID(doc, "view-state") != nil {
 		t.Fatalf("did not expect view-state fragment for speed limit update, body=%s", body)
 	}
 }
@@ -997,10 +1170,11 @@ func TestSetSpeedLimitsRejectsInvalidInput(t *testing.T) {
 		t.Fatalf("did not expect SetSpeedLimits call")
 	}
 	body := rr.Body.String()
-	if !strings.Contains(body, "download limit must be a non-negative integer") {
+	doc := parseHTML(t, body)
+	if !textContains(doc, "download limit must be a non-negative integer") {
 		t.Fatalf("expected validation error, body=%s", body)
 	}
-	if strings.Contains(body, `class="message-autodismiss"`) {
+	if findByClass(doc, "message-autodismiss") != nil {
 		t.Fatalf("did not expect auto-dismiss marker for error flash, body=%s", body)
 	}
 }
@@ -1037,8 +1211,10 @@ func TestTorrentActionRemove(t *testing.T) {
 	if !called {
 		t.Fatalf("expected Remove call")
 	}
-	if !strings.Contains(rr.Body.String(), "Torrent removed") {
-		t.Fatalf("expected success flash, body=%s", rr.Body.String())
+	body := rr.Body.String()
+	doc := parseHTML(t, body)
+	if !textContains(doc, "Torrent removed") {
+		t.Fatalf("expected success flash, body=%s", body)
 	}
 }
 
@@ -1171,13 +1347,20 @@ func TestDashboardHidesSteadyBackendOKStatus(t *testing.T) {
 		t.Fatalf("status = %d, body=%s", rr.Code, rr.Body.String())
 	}
 	body := rr.Body.String()
-	if !strings.Contains(body, `id="form-message"`) {
+	doc := parseHTML(t, body)
+	if findByID(doc, "form-message") == nil {
 		t.Fatalf("expected status bar in dashboard, body=%s", body)
 	}
-	if !strings.Contains(body, "message-info is-hidden") {
+	hiddenMessage := findElement(doc, func(n *html.Node) bool {
+		if n.Type != html.ElementNode {
+			return false
+		}
+		return hasClasses(n, "message-info", "is-hidden")
+	})
+	if hiddenMessage == nil {
 		t.Fatalf("expected steady backend ok status to be hidden, body=%s", body)
 	}
-	if strings.Contains(body, "Connected successfully to rTorrent: /run/rtorrent/rpc.sock") {
+	if textContains(doc, "Connected successfully to rTorrent: /run/rtorrent/rpc.sock") {
 		t.Fatalf("expected no steady backend ok message in status bar, body=%s", body)
 	}
 }
