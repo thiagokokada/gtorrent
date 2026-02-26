@@ -1,7 +1,6 @@
 const CONNECTION_STATES = ["online", "offline"];
 const FILTER_VALUES = ["all", "downloading", "seeding", "complete", "stopped"];
 const SORT_VALUES = ["addedAt", "name", "state", "progress", "etaSeconds", "ratio", "peers", "seeds", "downRate", "upRate", "sizeBytes"];
-const TABLE_COLUMN_KEYS = ["name", "hash", "state", "addedAt", "progress", "etaSeconds", "ratio", "peers", "seeds", "downRate", "upRate", "sizeBytes"];
 const STORAGE_KEYS = {
   filter: "gtorrent.view.filter",
   sort: "gtorrent.view.sort",
@@ -102,7 +101,43 @@ function writeCookie(key, value) {
   }
 }
 
+function tableColumnKeys() {
+  const keys = [];
+  const seen = new Set();
+
+  const checkboxList = document.querySelectorAll('#columns-form input[name="visibleCol"]');
+  for (const checkbox of checkboxList) {
+    const key = String(checkbox.value || "").trim();
+    if (key === "" || seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    keys.push(key);
+  }
+
+  if (keys.length > 0) {
+    return keys;
+  }
+
+  const tableCols = document.querySelectorAll("#torrent-table colgroup col[data-col]");
+  for (const col of tableCols) {
+    const key = String(col.dataset.col || "").trim();
+    if (key === "" || seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    keys.push(key);
+  }
+
+  return keys;
+}
+
 function normalizeVisibleColumnsValue(raw) {
+  const columnKeys = tableColumnKeys();
+  if (columnKeys.length === 0) {
+    return "";
+  }
+
   const seen = new Set();
   const visible = [];
   const value = String(raw || "").trim();
@@ -110,7 +145,7 @@ function normalizeVisibleColumnsValue(raw) {
     const tokens = value.split(",");
     for (const token of tokens) {
       const key = String(token || "").trim();
-      if (!TABLE_COLUMN_KEYS.includes(key) || seen.has(key)) {
+      if (!columnKeys.includes(key) || seen.has(key)) {
         continue;
       }
       seen.add(key);
@@ -118,18 +153,19 @@ function normalizeVisibleColumnsValue(raw) {
     }
   }
 
-  if (visible.length === 0 || visible.length === TABLE_COLUMN_KEYS.length) {
+  if (visible.length === 0 || visible.length === columnKeys.length) {
     return "";
   }
-  return TABLE_COLUMN_KEYS.filter(function (key) {
+  return columnKeys.filter(function (key) {
     return seen.has(key);
   }).join(",");
 }
 
 function visibleColumnsFromValue(raw) {
   const normalized = normalizeVisibleColumnsValue(raw);
+  const columnKeys = tableColumnKeys();
   if (normalized === "") {
-    return new Set(TABLE_COLUMN_KEYS);
+    return new Set(columnKeys);
   }
   return new Set(normalized.split(","));
 }

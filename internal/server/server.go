@@ -101,10 +101,17 @@ type torrentRow struct {
 	Size          string
 }
 
+type fileListColumn struct {
+	Key      string
+	Label    string
+	MinWidth int
+	Sortable bool
+}
+
 type dashboardView struct {
 	Params            viewParams
 	Torrents          []torrentRow
-	ColumnMinWidths   map[string]int
+	Columns           []fileListColumn
 	VisibleColumns    map[string]bool
 	VisibleColCount   int
 	HasSelected       bool
@@ -174,48 +181,23 @@ var (
 		Controls: true,
 		Status:   true,
 	}
-	fileListColumnMinWidths = map[string]int{
-		"name":       220,
-		"hash":       180,
-		"state":      90,
-		"addedAt":    110,
-		"progress":   140,
-		"etaSeconds": 90,
-		"ratio":      80,
-		"peers":      70,
-		"seeds":      70,
-		"downRate":   95,
-		"upRate":     90,
-		"sizeBytes":  110,
+	fileListColumns = []fileListColumn{
+		{Key: "name", Label: "Name", MinWidth: 220, Sortable: true},
+		{Key: "hash", Label: "Hash", MinWidth: 180, Sortable: false},
+		{Key: "state", Label: "State", MinWidth: 90, Sortable: true},
+		{Key: "addedAt", Label: "Added", MinWidth: 110, Sortable: true},
+		{Key: "progress", Label: "Done", MinWidth: 140, Sortable: true},
+		{Key: "etaSeconds", Label: "ETA", MinWidth: 90, Sortable: true},
+		{Key: "ratio", Label: "Ratio", MinWidth: 80, Sortable: true},
+		{Key: "peers", Label: "Peers", MinWidth: 70, Sortable: true},
+		{Key: "seeds", Label: "Seeds", MinWidth: 70, Sortable: true},
+		{Key: "downRate", Label: "Down", MinWidth: 95, Sortable: true},
+		{Key: "upRate", Label: "Up", MinWidth: 90, Sortable: true},
+		{Key: "sizeBytes", Label: "Size", MinWidth: 110, Sortable: true},
 	}
-	fileListColumnOrder = []string{
-		"name",
-		"hash",
-		"state",
-		"addedAt",
-		"progress",
-		"etaSeconds",
-		"ratio",
-		"peers",
-		"seeds",
-		"downRate",
-		"upRate",
-		"sizeBytes",
-	}
-	fileListColumnSet = map[string]struct{}{
-		"name":       {},
-		"hash":       {},
-		"state":      {},
-		"addedAt":    {},
-		"progress":   {},
-		"etaSeconds": {},
-		"ratio":      {},
-		"peers":      {},
-		"seeds":      {},
-		"downRate":   {},
-		"upRate":     {},
-		"sizeBytes":  {},
-	}
+	fileListColumnSet          = buildColumnSet(fileListColumns)
+	fileListSortableColumnKeys = buildSortableColumnKeys(fileListColumns)
+	fileListSortableColumnSet  = buildColumnSetFromKeys(fileListSortableColumnKeys)
 )
 
 func New(svc Service) (*Server, error) {
@@ -529,7 +511,7 @@ func (s *Server) writeLiveUpdate(w io.Writer, flusher http.Flusher, ctx context.
 		visibleColumns := parseVisibleColumns(params.Cols)
 		fallback := dashboardView{
 			Params:           params,
-			ColumnMinWidths:  fileListColumnMinWidths,
+			Columns:          fileListColumns,
 			VisibleColumns:   visibleColumns,
 			VisibleColCount:  visibleColumnsCount(visibleColumns),
 			DownloadLimitKiB: speedLimits.DownloadKiB,
@@ -798,7 +780,7 @@ func (s *Server) dashboardViewWithFlash(ctx context.Context, params viewParams, 
 		visibleColumns := parseVisibleColumns(params.Cols)
 		view = dashboardView{
 			Params:           params,
-			ColumnMinWidths:  fileListColumnMinWidths,
+			Columns:          fileListColumns,
 			VisibleColumns:   visibleColumns,
 			VisibleColCount:  visibleColumnsCount(visibleColumns),
 			DownloadLimitKiB: speedLimits.DownloadKiB,
@@ -906,7 +888,7 @@ func (s *Server) buildDashboardView(ctx context.Context, params viewParams) (das
 	return dashboardView{
 		Params:           params,
 		Torrents:         rows,
-		ColumnMinWidths:  fileListColumnMinWidths,
+		Columns:          fileListColumns,
 		VisibleColumns:   visibleColumns,
 		VisibleColCount:  visibleColumnsCount(visibleColumns),
 		HasSelected:      selectedHash != "",
@@ -1123,7 +1105,7 @@ func parseVisibleColumns(raw string) map[string]bool {
 }
 
 func parseVisibleColumnsList(items []string) map[string]bool {
-	visible := make(map[string]bool, len(fileListColumnOrder))
+	visible := make(map[string]bool, len(fileListColumns))
 	for _, item := range items {
 		key := strings.TrimSpace(item)
 		if _, ok := fileListColumnSet[key]; !ok {
@@ -1141,11 +1123,11 @@ func encodeVisibleColumns(visible map[string]bool) string {
 	if len(visible) == 0 {
 		return ""
 	}
-	keys := make([]string, 0, len(fileListColumnOrder))
+	keys := make([]string, 0, len(fileListColumns))
 	allVisible := true
-	for _, key := range fileListColumnOrder {
-		if visible[key] {
-			keys = append(keys, key)
+	for _, column := range fileListColumns {
+		if visible[column.Key] {
+			keys = append(keys, column.Key)
 			continue
 		}
 		allVisible = false
@@ -1157,24 +1139,50 @@ func encodeVisibleColumns(visible map[string]bool) string {
 }
 
 func defaultVisibleColumns() map[string]bool {
-	visible := make(map[string]bool, len(fileListColumnOrder))
-	for _, key := range fileListColumnOrder {
-		visible[key] = true
+	visible := make(map[string]bool, len(fileListColumns))
+	for _, column := range fileListColumns {
+		visible[column.Key] = true
 	}
 	return visible
 }
 
 func visibleColumnsCount(visible map[string]bool) int {
 	count := 0
-	for _, key := range fileListColumnOrder {
-		if visible[key] {
+	for _, column := range fileListColumns {
+		if visible[column.Key] {
 			count++
 		}
 	}
 	if count == 0 {
-		return len(fileListColumnOrder)
+		return len(fileListColumns)
 	}
 	return count
+}
+
+func buildColumnSet(columns []fileListColumn) map[string]struct{} {
+	keys := make(map[string]struct{}, len(columns))
+	for _, column := range columns {
+		keys[column.Key] = struct{}{}
+	}
+	return keys
+}
+
+func buildSortableColumnKeys(columns []fileListColumn) []string {
+	keys := make([]string, 0, len(columns))
+	for _, column := range columns {
+		if column.Sortable {
+			keys = append(keys, column.Key)
+		}
+	}
+	return keys
+}
+
+func buildColumnSetFromKeys(keys []string) map[string]struct{} {
+	result := make(map[string]struct{}, len(keys))
+	for _, key := range keys {
+		result[key] = struct{}{}
+	}
+	return result
 }
 
 func parseSpeedLimits(values url.Values) (domain.SpeedLimits, error) {
@@ -1237,8 +1245,8 @@ func controlURLs(params viewParams) (string, map[string]string, map[string]strin
 		filterURLs[filter] = dashboardURLForParams(next)
 	}
 
-	sortURLs := make(map[string]string, 11)
-	for _, sortKey := range []string{"name", "state", "addedAt", "progress", "etaSeconds", "ratio", "peers", "seeds", "downRate", "upRate", "sizeBytes"} {
+	sortURLs := make(map[string]string, len(fileListSortableColumnKeys))
+	for _, sortKey := range fileListSortableColumnKeys {
 		next := params
 		next.Sort = sortKey
 		if params.Sort == sortKey {
@@ -1266,12 +1274,8 @@ func isValidFilter(v string) bool {
 }
 
 func isValidSort(v string) bool {
-	switch v {
-	case "addedAt", "name", "state", "progress", "etaSeconds", "ratio", "peers", "seeds", "downRate", "upRate", "sizeBytes":
-		return true
-	default:
-		return false
-	}
+	_, ok := fileListSortableColumnSet[v]
+	return ok
 }
 
 func streamURLForParams(params viewParams) string {

@@ -917,6 +917,30 @@ func TestDashboardOpenColumnsHTMXReturnsOpenColumnsDialogControlsOnly(t *testing
 	}) {
 		t.Fatalf("expected cancel button to use server-side close flow, body=%s", body)
 	}
+	prev := -1
+	for _, marker := range []string{
+		`name="visibleCol" value="name"`,
+		`name="visibleCol" value="hash"`,
+		`name="visibleCol" value="state"`,
+		`name="visibleCol" value="addedAt"`,
+		`name="visibleCol" value="progress"`,
+		`name="visibleCol" value="etaSeconds"`,
+		`name="visibleCol" value="ratio"`,
+		`name="visibleCol" value="peers"`,
+		`name="visibleCol" value="seeds"`,
+		`name="visibleCol" value="downRate"`,
+		`name="visibleCol" value="upRate"`,
+		`name="visibleCol" value="sizeBytes"`,
+	} {
+		idx := strings.Index(body, marker)
+		if idx < 0 {
+			t.Fatalf("expected column checkbox marker %q in columns dialog, body=%s", marker, body)
+		}
+		if idx < prev {
+			t.Fatalf("expected columns dialog order to match file list order, body=%s", body)
+		}
+		prev = idx
+	}
 	if findByID(doc, "file-list") != nil {
 		t.Fatalf("did not expect file-list fragment for open-columns, body=%s", body)
 	}

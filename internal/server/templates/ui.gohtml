@@ -159,18 +159,9 @@
     <h2>Visible Columns</h2>
     <input type="hidden" name="applyCols" value="1">
     <div class="columns-grid">
-      <label class="column-visibility-option"><input type="checkbox" name="visibleCol" value="name"{{if index .VisibleColumns "name"}} checked{{end}}><span>Name</span></label>
-      <label class="column-visibility-option"><input type="checkbox" name="visibleCol" value="hash"{{if index .VisibleColumns "hash"}} checked{{end}}><span>Hash</span></label>
-      <label class="column-visibility-option"><input type="checkbox" name="visibleCol" value="state"{{if index .VisibleColumns "state"}} checked{{end}}><span>State</span></label>
-      <label class="column-visibility-option"><input type="checkbox" name="visibleCol" value="addedAt"{{if index .VisibleColumns "addedAt"}} checked{{end}}><span>Added</span></label>
-      <label class="column-visibility-option"><input type="checkbox" name="visibleCol" value="progress"{{if index .VisibleColumns "progress"}} checked{{end}}><span>Done</span></label>
-      <label class="column-visibility-option"><input type="checkbox" name="visibleCol" value="etaSeconds"{{if index .VisibleColumns "etaSeconds"}} checked{{end}}><span>ETA</span></label>
-      <label class="column-visibility-option"><input type="checkbox" name="visibleCol" value="ratio"{{if index .VisibleColumns "ratio"}} checked{{end}}><span>Ratio</span></label>
-      <label class="column-visibility-option"><input type="checkbox" name="visibleCol" value="peers"{{if index .VisibleColumns "peers"}} checked{{end}}><span>Peers</span></label>
-      <label class="column-visibility-option"><input type="checkbox" name="visibleCol" value="seeds"{{if index .VisibleColumns "seeds"}} checked{{end}}><span>Seeds</span></label>
-      <label class="column-visibility-option"><input type="checkbox" name="visibleCol" value="downRate"{{if index .VisibleColumns "downRate"}} checked{{end}}><span>Down</span></label>
-      <label class="column-visibility-option"><input type="checkbox" name="visibleCol" value="upRate"{{if index .VisibleColumns "upRate"}} checked{{end}}><span>Up</span></label>
-      <label class="column-visibility-option"><input type="checkbox" name="visibleCol" value="sizeBytes"{{if index .VisibleColumns "sizeBytes"}} checked{{end}}><span>Size</span></label>
+      {{range .Columns}}
+      <label class="column-visibility-option"><input type="checkbox" name="visibleCol" value="{{.Key}}"{{if index $.VisibleColumns .Key}} checked{{end}}><span>{{.Label}}</span></label>
+      {{end}}
     </div>
     <div class="dialog-actions">
       <button type="button" id="cancel-columns" class="secondary"
@@ -259,33 +250,23 @@
   <div class="table-wrap">
     <table id="torrent-table">
       <colgroup>
-        {{if index .VisibleColumns "name"}}<col data-col="name">{{end}}
-        {{if index .VisibleColumns "hash"}}<col data-col="hash">{{end}}
-        {{if index .VisibleColumns "state"}}<col data-col="state">{{end}}
-        {{if index .VisibleColumns "addedAt"}}<col data-col="addedAt">{{end}}
-        {{if index .VisibleColumns "progress"}}<col data-col="progress">{{end}}
-        {{if index .VisibleColumns "etaSeconds"}}<col data-col="etaSeconds">{{end}}
-        {{if index .VisibleColumns "ratio"}}<col data-col="ratio">{{end}}
-        {{if index .VisibleColumns "peers"}}<col data-col="peers">{{end}}
-        {{if index .VisibleColumns "seeds"}}<col data-col="seeds">{{end}}
-        {{if index .VisibleColumns "downRate"}}<col data-col="downRate">{{end}}
-        {{if index .VisibleColumns "upRate"}}<col data-col="upRate">{{end}}
-        {{if index .VisibleColumns "sizeBytes"}}<col data-col="sizeBytes">{{end}}
+        {{range .Columns}}
+        {{if index $.VisibleColumns .Key}}<col data-col="{{.Key}}">{{end}}
+        {{end}}
       </colgroup>
       <thead>
         <tr>
-          {{if index .VisibleColumns "name"}}<th data-col="name" data-min-width="{{index .ColumnMinWidths "name"}}"><button type="button" class="sort-btn" data-sort="name" hx-get="{{index .SortURLs "name"}}" hx-target="#dashboard" hx-swap="outerHTML">Name{{if eq .Params.Sort "name"}} {{if eq .Params.Dir "asc"}}▲{{else}}▼{{end}}{{end}}</button></th>{{end}}
-          {{if index .VisibleColumns "hash"}}<th data-col="hash" data-min-width="{{index .ColumnMinWidths "hash"}}"><span class="th-label">Hash</span></th>{{end}}
-          {{if index .VisibleColumns "state"}}<th data-col="state" data-min-width="{{index .ColumnMinWidths "state"}}"><button type="button" class="sort-btn" data-sort="state" hx-get="{{index .SortURLs "state"}}" hx-target="#dashboard" hx-swap="outerHTML">State{{if eq .Params.Sort "state"}} {{if eq .Params.Dir "asc"}}▲{{else}}▼{{end}}{{end}}</button></th>{{end}}
-          {{if index .VisibleColumns "addedAt"}}<th data-col="addedAt" data-min-width="{{index .ColumnMinWidths "addedAt"}}"><button type="button" class="sort-btn" data-sort="addedAt" hx-get="{{index .SortURLs "addedAt"}}" hx-target="#dashboard" hx-swap="outerHTML">Added{{if eq .Params.Sort "addedAt"}} {{if eq .Params.Dir "asc"}}▲{{else}}▼{{end}}{{end}}</button></th>{{end}}
-          {{if index .VisibleColumns "progress"}}<th data-col="progress" data-min-width="{{index .ColumnMinWidths "progress"}}"><button type="button" class="sort-btn" data-sort="progress" hx-get="{{index .SortURLs "progress"}}" hx-target="#dashboard" hx-swap="outerHTML">Done{{if eq .Params.Sort "progress"}} {{if eq .Params.Dir "asc"}}▲{{else}}▼{{end}}{{end}}</button></th>{{end}}
-          {{if index .VisibleColumns "etaSeconds"}}<th data-col="etaSeconds" data-min-width="{{index .ColumnMinWidths "etaSeconds"}}"><button type="button" class="sort-btn" data-sort="etaSeconds" hx-get="{{index .SortURLs "etaSeconds"}}" hx-target="#dashboard" hx-swap="outerHTML">ETA{{if eq .Params.Sort "etaSeconds"}} {{if eq .Params.Dir "asc"}}▲{{else}}▼{{end}}{{end}}</button></th>{{end}}
-          {{if index .VisibleColumns "ratio"}}<th data-col="ratio" data-min-width="{{index .ColumnMinWidths "ratio"}}"><button type="button" class="sort-btn" data-sort="ratio" hx-get="{{index .SortURLs "ratio"}}" hx-target="#dashboard" hx-swap="outerHTML">Ratio{{if eq .Params.Sort "ratio"}} {{if eq .Params.Dir "asc"}}▲{{else}}▼{{end}}{{end}}</button></th>{{end}}
-          {{if index .VisibleColumns "peers"}}<th data-col="peers" data-min-width="{{index .ColumnMinWidths "peers"}}"><button type="button" class="sort-btn" data-sort="peers" hx-get="{{index .SortURLs "peers"}}" hx-target="#dashboard" hx-swap="outerHTML">Peers{{if eq .Params.Sort "peers"}} {{if eq .Params.Dir "asc"}}▲{{else}}▼{{end}}{{end}}</button></th>{{end}}
-          {{if index .VisibleColumns "seeds"}}<th data-col="seeds" data-min-width="{{index .ColumnMinWidths "seeds"}}"><button type="button" class="sort-btn" data-sort="seeds" hx-get="{{index .SortURLs "seeds"}}" hx-target="#dashboard" hx-swap="outerHTML">Seeds{{if eq .Params.Sort "seeds"}} {{if eq .Params.Dir "asc"}}▲{{else}}▼{{end}}{{end}}</button></th>{{end}}
-          {{if index .VisibleColumns "downRate"}}<th data-col="downRate" data-min-width="{{index .ColumnMinWidths "downRate"}}"><button type="button" class="sort-btn" data-sort="downRate" hx-get="{{index .SortURLs "downRate"}}" hx-target="#dashboard" hx-swap="outerHTML">Down{{if eq .Params.Sort "downRate"}} {{if eq .Params.Dir "asc"}}▲{{else}}▼{{end}}{{end}}</button></th>{{end}}
-          {{if index .VisibleColumns "upRate"}}<th data-col="upRate" data-min-width="{{index .ColumnMinWidths "upRate"}}"><button type="button" class="sort-btn" data-sort="upRate" hx-get="{{index .SortURLs "upRate"}}" hx-target="#dashboard" hx-swap="outerHTML">Up{{if eq .Params.Sort "upRate"}} {{if eq .Params.Dir "asc"}}▲{{else}}▼{{end}}{{end}}</button></th>{{end}}
-          {{if index .VisibleColumns "sizeBytes"}}<th data-col="sizeBytes" data-min-width="{{index .ColumnMinWidths "sizeBytes"}}"><button type="button" class="sort-btn" data-sort="sizeBytes" hx-get="{{index .SortURLs "sizeBytes"}}" hx-target="#dashboard" hx-swap="outerHTML">Size{{if eq .Params.Sort "sizeBytes"}} {{if eq .Params.Dir "asc"}}▲{{else}}▼{{end}}{{end}}</button></th>{{end}}
+          {{range .Columns}}
+          {{if index $.VisibleColumns .Key}}
+          <th data-col="{{.Key}}" data-min-width="{{.MinWidth}}">
+            {{if .Sortable}}
+            <button type="button" class="sort-btn" data-sort="{{.Key}}" hx-get="{{index $.SortURLs .Key}}" hx-target="#dashboard" hx-swap="outerHTML">{{.Label}}{{if eq $.Params.Sort .Key}} {{if eq $.Params.Dir "asc"}}▲{{else}}▼{{end}}{{end}}</button>
+            {{else}}
+            <span class="th-label">{{.Label}}</span>
+            {{end}}
+          </th>
+          {{end}}
+          {{end}}
         </tr>
       </thead>
       {{template "table" .}}
@@ -298,27 +279,32 @@
   <tbody id="torrents-body" sse-swap="table" hx-swap="outerHTML">
   {{if .Torrents}}
     {{range .Torrents}}
+      {{$row := .}}
       <tr data-hash="{{.Hash}}" class="{{if .Active}}active{{end}}"
         hx-get="{{.SelectURL}}"
         hx-target="#dashboard"
         hx-swap="outerHTML">
-        {{if index $.VisibleColumns "name"}}<td class="name">{{.Name}}</td>{{end}}
-        {{if index $.VisibleColumns "hash"}}<td class="hash">{{.Hash}}</td>{{end}}
-        {{if index $.VisibleColumns "state"}}<td><span class="state {{.StateClass}}">{{.State}}</span></td>{{end}}
-        {{if index $.VisibleColumns "addedAt"}}<td class="added">{{.AddedAt}}</td>{{end}}
-        {{if index $.VisibleColumns "progress"}}<td>
+        {{range $col := $.Columns}}
+        {{if index $.VisibleColumns $col.Key}}
+        {{if eq $col.Key "name"}}<td class="name">{{$row.Name}}</td>{{end}}
+        {{if eq $col.Key "hash"}}<td class="hash">{{$row.Hash}}</td>{{end}}
+        {{if eq $col.Key "state"}}<td><span class="state {{$row.StateClass}}">{{$row.State}}</span></td>{{end}}
+        {{if eq $col.Key "addedAt"}}<td class="added">{{$row.AddedAt}}</td>{{end}}
+        {{if eq $col.Key "progress"}}<td>
           <div class="progress-wrap">
-            <progress class="progress" max="1" value="{{.ProgressValue}}"></progress>
-            <span class="percent">{{.ProgressPct}}%</span>
+            <progress class="progress" max="1" value="{{$row.ProgressValue}}"></progress>
+            <span class="percent">{{$row.ProgressPct}}%</span>
           </div>
         </td>{{end}}
-        {{if index $.VisibleColumns "etaSeconds"}}<td class="eta">{{.ETA}}</td>{{end}}
-        {{if index $.VisibleColumns "ratio"}}<td class="ratio">{{.Ratio}}</td>{{end}}
-        {{if index $.VisibleColumns "peers"}}<td class="peers">{{.Peers}}</td>{{end}}
-        {{if index $.VisibleColumns "seeds"}}<td class="seeds">{{.Seeds}}</td>{{end}}
-        {{if index $.VisibleColumns "downRate"}}<td class="down">{{.DownRate}}</td>{{end}}
-        {{if index $.VisibleColumns "upRate"}}<td class="up">{{.UpRate}}</td>{{end}}
-        {{if index $.VisibleColumns "sizeBytes"}}<td class="size">{{.Size}}</td>{{end}}
+        {{if eq $col.Key "etaSeconds"}}<td class="eta">{{$row.ETA}}</td>{{end}}
+        {{if eq $col.Key "ratio"}}<td class="ratio">{{$row.Ratio}}</td>{{end}}
+        {{if eq $col.Key "peers"}}<td class="peers">{{$row.Peers}}</td>{{end}}
+        {{if eq $col.Key "seeds"}}<td class="seeds">{{$row.Seeds}}</td>{{end}}
+        {{if eq $col.Key "downRate"}}<td class="down">{{$row.DownRate}}</td>{{end}}
+        {{if eq $col.Key "upRate"}}<td class="up">{{$row.UpRate}}</td>{{end}}
+        {{if eq $col.Key "sizeBytes"}}<td class="size">{{$row.Size}}</td>{{end}}
+        {{end}}
+        {{end}}
       </tr>
     {{end}}
   {{else}}
