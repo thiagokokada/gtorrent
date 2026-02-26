@@ -1,6 +1,4 @@
 const CONNECTION_STATES = ["online", "offline"];
-const FILTER_VALUES = ["all", "downloading", "seeding", "complete", "stopped"];
-const SORT_VALUES = ["addedAt", "name", "state", "progress", "etaSeconds", "ratio", "peers", "seeds", "downRate", "upRate", "sizeBytes"];
 const STORAGE_KEYS = {
   filter: "gtorrent.view.filter",
   sort: "gtorrent.view.sort",
@@ -440,15 +438,9 @@ function persistCurrentViewState() {
     colsInput.value = cols;
   }
 
-  if (FILTER_VALUES.includes(filter)) {
-    writeCookie(STORAGE_KEYS.filter, filter);
-  }
-  if (SORT_VALUES.includes(sort)) {
-    writeCookie(STORAGE_KEYS.sort, sort);
-  }
-  if (dir === "asc" || dir === "desc") {
-    writeCookie(STORAGE_KEYS.dir, dir);
-  }
+  writeCookie(STORAGE_KEYS.filter, filter);
+  writeCookie(STORAGE_KEYS.sort, sort);
+  writeCookie(STORAGE_KEYS.dir, dir);
   writeStoredVisibleColumns(cols);
 }
 
