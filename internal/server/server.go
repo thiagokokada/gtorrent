@@ -68,15 +68,17 @@ type viewParams struct {
 	Sort     string
 	Dir      string
 	Selected string
+	Cols     string
 }
 
 type flashMessage struct {
-	Kind             string
-	Message          string
-	OpenAddDialog    bool
-	OpenRemoveDialog bool
-	AddFormError     string
-	AddFormMagnet    string
+	Kind              string
+	Message           string
+	OpenAddDialog     bool
+	OpenColumnsDialog bool
+	OpenRemoveDialog  bool
+	AddFormError      string
+	AddFormMagnet     string
 }
 
 type torrentRow struct {
@@ -100,29 +102,32 @@ type torrentRow struct {
 }
 
 type dashboardView struct {
-	Params           viewParams
-	Torrents         []torrentRow
-	ColumnMinWidths  map[string]int
-	HasSelected      bool
-	SelectedHash     string
-	SelectedName     string
-	SelectedRunning  bool
-	DownloadLimitKiB int64
-	UploadLimitKiB   int64
-	StatusKind       string
-	StatusMessage    string
-	VisibleCount     int
-	TotalDownRate    string
-	TotalUpRate      string
-	StreamURL        string
-	DashboardURL     string
-	FilterURLs       map[string]string
-	SortURLs         map[string]string
-	OpenAddDialog    bool
-	OpenRemoveDialog bool
-	AddFormError     string
-	AddFormMagnet    string
-	SwapOOB          bool
+	Params            viewParams
+	Torrents          []torrentRow
+	ColumnMinWidths   map[string]int
+	VisibleColumns    map[string]bool
+	VisibleColCount   int
+	HasSelected       bool
+	SelectedHash      string
+	SelectedName      string
+	SelectedRunning   bool
+	DownloadLimitKiB  int64
+	UploadLimitKiB    int64
+	StatusKind        string
+	StatusMessage     string
+	VisibleCount      int
+	TotalDownRate     string
+	TotalUpRate       string
+	StreamURL         string
+	DashboardURL      string
+	FilterURLs        map[string]string
+	SortURLs          map[string]string
+	OpenAddDialog     bool
+	OpenColumnsDialog bool
+	OpenRemoveDialog  bool
+	AddFormError      string
+	AddFormMagnet     string
+	SwapOOB           bool
 }
 
 type indexView struct {
@@ -171,6 +176,7 @@ var (
 	}
 	fileListColumnMinWidths = map[string]int{
 		"name":       220,
+		"hash":       180,
 		"state":      90,
 		"addedAt":    110,
 		"progress":   140,
@@ -181,6 +187,34 @@ var (
 		"downRate":   95,
 		"upRate":     90,
 		"sizeBytes":  110,
+	}
+	fileListColumnOrder = []string{
+		"name",
+		"hash",
+		"state",
+		"addedAt",
+		"progress",
+		"etaSeconds",
+		"ratio",
+		"peers",
+		"seeds",
+		"downRate",
+		"upRate",
+		"sizeBytes",
+	}
+	fileListColumnSet = map[string]struct{}{
+		"name":       {},
+		"hash":       {},
+		"state":      {},
+		"addedAt":    {},
+		"progress":   {},
+		"etaSeconds": {},
+		"ratio":      {},
+		"peers":      {},
+		"seeds":      {},
+		"downRate":   {},
+		"upRate":     {},
+		"sizeBytes":  {},
 	}
 )
 
@@ -275,6 +309,11 @@ func (s *Server) handleUIDashboard(w http.ResponseWriter, r *http.Request) {
 	case "open-add":
 		fragments = fragmentsAddDialogOnly
 		flash.OpenAddDialog = true
+	case "cancel-columns":
+		fragments = fragmentsControlsOnly
+	case "open-columns":
+		fragments = fragmentsControlsOnly
+		flash.OpenColumnsDialog = true
 	case "cancel-remove":
 		fragments = fragmentsControlsOnly
 	case "open-remove":
@@ -487,9 +526,12 @@ func (s *Server) writeLiveUpdate(w io.Writer, flusher http.Flusher, ctx context.
 		statusKind, statusMessage := statusFromBackendStatus(s.currentBackendStatus(err))
 		dashboardURL, filterURLs, sortURLs := controlURLs(params)
 		speedLimits := s.currentSpeedLimits(ctx)
+		visibleColumns := parseVisibleColumns(params.Cols)
 		fallback := dashboardView{
 			Params:           params,
 			ColumnMinWidths:  fileListColumnMinWidths,
+			VisibleColumns:   visibleColumns,
+			VisibleColCount:  visibleColumnsCount(visibleColumns),
 			DownloadLimitKiB: speedLimits.DownloadKiB,
 			UploadLimitKiB:   speedLimits.UploadKiB,
 			StatusKind:       statusKind,
@@ -613,6 +655,7 @@ func parseInitialViewParams(r *http.Request) viewParams {
 	queryFilterValue := strings.TrimSpace(r.URL.Query().Get("filter"))
 	querySortValue := strings.TrimSpace(r.URL.Query().Get("sort"))
 	queryDirValue := strings.TrimSpace(r.URL.Query().Get("dir"))
+	queryColsValue := strings.TrimSpace(r.URL.Query().Get("cols"))
 
 	if cookie, err := r.Cookie(cookieFilter); err == nil {
 		cookieFilterValue = strings.TrimSpace(cookie.Value)
@@ -642,6 +685,9 @@ func parseInitialViewParams(r *http.Request) viewParams {
 	if queryDirValue == "asc" || queryDirValue == "desc" {
 		params.Dir = queryDirValue
 	}
+	if queryColsValue != "" {
+		params.Cols = encodeVisibleColumns(parseVisibleColumns(queryColsValue))
+	}
 
 	slog.Debug("resolve initial ui view params",
 		"path", r.URL.Path,
@@ -651,9 +697,11 @@ func parseInitialViewParams(r *http.Request) viewParams {
 		"queryFilter", queryFilterValue,
 		"querySort", querySortValue,
 		"queryDir", queryDirValue,
+		"queryCols", queryColsValue,
 		"resolvedFilter", params.Filter,
 		"resolvedSort", params.Sort,
 		"resolvedDir", params.Dir,
+		"resolvedCols", params.Cols,
 	)
 
 	return params
@@ -747,9 +795,12 @@ func (s *Server) dashboardViewWithFlash(ctx context.Context, params viewParams, 
 		statusKind, statusMessage := statusFromBackendStatus(s.currentBackendStatus(err))
 		dashboardURL, filterURLs, sortURLs := controlURLs(params)
 		speedLimits := s.currentSpeedLimits(ctx)
+		visibleColumns := parseVisibleColumns(params.Cols)
 		view = dashboardView{
 			Params:           params,
 			ColumnMinWidths:  fileListColumnMinWidths,
+			VisibleColumns:   visibleColumns,
+			VisibleColCount:  visibleColumnsCount(visibleColumns),
 			DownloadLimitKiB: speedLimits.DownloadKiB,
 			UploadLimitKiB:   speedLimits.UploadKiB,
 			StatusKind:       statusKind,
@@ -775,6 +826,9 @@ func (s *Server) dashboardViewWithFlash(ctx context.Context, params viewParams, 
 	if flash.OpenAddDialog || strings.TrimSpace(flash.AddFormError) != "" {
 		view.OpenAddDialog = true
 	}
+	if flash.OpenColumnsDialog {
+		view.OpenColumnsDialog = true
+	}
 	if flash.OpenRemoveDialog && view.HasSelected {
 		view.OpenRemoveDialog = true
 	}
@@ -786,6 +840,9 @@ func (s *Server) dashboardViewWithFlash(ctx context.Context, params viewParams, 
 }
 
 func (s *Server) buildDashboardView(ctx context.Context, params viewParams) (dashboardView, error) {
+	visibleColumns := parseVisibleColumns(params.Cols)
+	params.Cols = encodeVisibleColumns(visibleColumns)
+
 	items, err := s.svc.List(ctx)
 	if err != nil {
 		return dashboardView{}, err
@@ -850,6 +907,8 @@ func (s *Server) buildDashboardView(ctx context.Context, params viewParams) (das
 		Params:           params,
 		Torrents:         rows,
 		ColumnMinWidths:  fileListColumnMinWidths,
+		VisibleColumns:   visibleColumns,
+		VisibleColCount:  visibleColumnsCount(visibleColumns),
 		HasSelected:      selectedHash != "",
 		SelectedHash:     selectedHash,
 		SelectedName:     selectedName,
@@ -1037,7 +1096,85 @@ func parseViewParams(values url.Values) viewParams {
 	if v := strings.TrimSpace(values.Get("selected")); v != "" {
 		params.Selected = v
 	}
+	params.Cols = encodeVisibleColumns(parseVisibleColumnsValues(values))
 	return params
+}
+
+func parseVisibleColumnsValues(values url.Values) map[string]bool {
+	if values == nil {
+		return defaultVisibleColumns()
+	}
+	selected := values["visibleCol"]
+	if len(selected) > 0 {
+		return parseVisibleColumnsList(selected)
+	}
+	if strings.TrimSpace(values.Get("applyCols")) != "" {
+		return defaultVisibleColumns()
+	}
+	return parseVisibleColumns(values.Get("cols"))
+}
+
+func parseVisibleColumns(raw string) map[string]bool {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" {
+		return defaultVisibleColumns()
+	}
+	return parseVisibleColumnsList(strings.Split(trimmed, ","))
+}
+
+func parseVisibleColumnsList(items []string) map[string]bool {
+	visible := make(map[string]bool, len(fileListColumnOrder))
+	for _, item := range items {
+		key := strings.TrimSpace(item)
+		if _, ok := fileListColumnSet[key]; !ok {
+			continue
+		}
+		visible[key] = true
+	}
+	if len(visible) == 0 {
+		return defaultVisibleColumns()
+	}
+	return visible
+}
+
+func encodeVisibleColumns(visible map[string]bool) string {
+	if len(visible) == 0 {
+		return ""
+	}
+	keys := make([]string, 0, len(fileListColumnOrder))
+	allVisible := true
+	for _, key := range fileListColumnOrder {
+		if visible[key] {
+			keys = append(keys, key)
+			continue
+		}
+		allVisible = false
+	}
+	if allVisible {
+		return ""
+	}
+	return strings.Join(keys, ",")
+}
+
+func defaultVisibleColumns() map[string]bool {
+	visible := make(map[string]bool, len(fileListColumnOrder))
+	for _, key := range fileListColumnOrder {
+		visible[key] = true
+	}
+	return visible
+}
+
+func visibleColumnsCount(visible map[string]bool) int {
+	count := 0
+	for _, key := range fileListColumnOrder {
+		if visible[key] {
+			count++
+		}
+	}
+	if count == 0 {
+		return len(fileListColumnOrder)
+	}
+	return count
 }
 
 func parseSpeedLimits(values url.Values) (domain.SpeedLimits, error) {
@@ -1161,6 +1298,9 @@ func urlForParams(base string, params viewParams) string {
 	}
 	if params.Selected != "" {
 		values.Set("selected", params.Selected)
+	}
+	if params.Cols != "" {
+		values.Set("cols", params.Cols)
 	}
 	encoded := values.Encode()
 	if encoded == "" {

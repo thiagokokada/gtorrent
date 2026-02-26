@@ -1,11 +1,13 @@
 const CONNECTION_STATES = ["online", "offline"];
 const FILTER_VALUES = ["all", "downloading", "seeding", "complete", "stopped"];
 const SORT_VALUES = ["addedAt", "name", "state", "progress", "etaSeconds", "ratio", "peers", "seeds", "downRate", "upRate", "sizeBytes"];
+const TABLE_COLUMN_KEYS = ["name", "hash", "state", "addedAt", "progress", "etaSeconds", "ratio", "peers", "seeds", "downRate", "upRate", "sizeBytes"];
 const STORAGE_KEYS = {
   filter: "gtorrent.view.filter",
   sort: "gtorrent.view.sort",
   dir: "gtorrent.view.dir",
-  columns: "gtorrent.table.columns.v1",
+  visibleColumns: "gtorrent.table.visible-columns.v1",
+  columnWidths: "gtorrent.table.columns.v1",
 };
 const DEFAULT_COLUMN_MIN_WIDTH = 48;
 const state = {
@@ -100,9 +102,129 @@ function writeCookie(key, value) {
   }
 }
 
+function normalizeVisibleColumnsValue(raw) {
+  const seen = new Set();
+  const visible = [];
+  const value = String(raw || "").trim();
+  if (value !== "") {
+    const tokens = value.split(",");
+    for (const token of tokens) {
+      const key = String(token || "").trim();
+      if (!TABLE_COLUMN_KEYS.includes(key) || seen.has(key)) {
+        continue;
+      }
+      seen.add(key);
+      visible.push(key);
+    }
+  }
+
+  if (visible.length === 0 || visible.length === TABLE_COLUMN_KEYS.length) {
+    return "";
+  }
+  return TABLE_COLUMN_KEYS.filter(function (key) {
+    return seen.has(key);
+  }).join(",");
+}
+
+function visibleColumnsFromValue(raw) {
+  const normalized = normalizeVisibleColumnsValue(raw);
+  if (normalized === "") {
+    return new Set(TABLE_COLUMN_KEYS);
+  }
+  return new Set(normalized.split(","));
+}
+
+function readStoredVisibleColumns() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEYS.visibleColumns);
+    if (raw === null) {
+      return null;
+    }
+    return normalizeVisibleColumnsValue(raw);
+  } catch (error) {
+    logUiError(`failed to read visible columns from localStorage key "${STORAGE_KEYS.visibleColumns}"`, error);
+    return null;
+  }
+}
+
+function writeStoredVisibleColumns(value) {
+  try {
+    const normalized = normalizeVisibleColumnsValue(value);
+    if (normalized === "") {
+      localStorage.removeItem(STORAGE_KEYS.visibleColumns);
+      return;
+    }
+    localStorage.setItem(STORAGE_KEYS.visibleColumns, normalized);
+  } catch (error) {
+    logUiError(`failed to write visible columns to localStorage key "${STORAGE_KEYS.visibleColumns}"`, error);
+  }
+}
+
+function columnsInputEl() {
+  return document.querySelector("#cols-input");
+}
+
+function viewStateValues() {
+  const form = document.querySelector("#view-state");
+  if (!form) {
+    return {};
+  }
+  const values = {};
+  const formData = new FormData(form);
+  for (const [key, value] of formData.entries()) {
+    values[String(key)] = String(value);
+  }
+  return values;
+}
+
+function refreshDashboardFromViewState() {
+  const dashboard = document.querySelector("#dashboard");
+  if (!dashboard || typeof window.htmx === "undefined") {
+    return;
+  }
+  window.htmx.ajax("GET", "/ui/dashboard", {
+    target: "#dashboard",
+    swap: "outerHTML",
+    values: viewStateValues(),
+  });
+}
+
+function syncColumnsDialogFromInputValue(value) {
+  const form = document.querySelector("#columns-form");
+  if (!form) {
+    return;
+  }
+  const visible = visibleColumnsFromValue(value);
+  const checkboxes = form.querySelectorAll('input[name="visibleCol"]');
+  for (const checkbox of checkboxes) {
+    checkbox.checked = visible.has(String(checkbox.value || ""));
+  }
+}
+
+function syncStoredVisibleColumnsToViewState() {
+  const colsInput = columnsInputEl();
+  if (!colsInput) {
+    return;
+  }
+  const current = normalizeVisibleColumnsValue(colsInput.value);
+  const stored = readStoredVisibleColumns();
+  if (stored === null) {
+    colsInput.value = current;
+    syncColumnsDialogFromInputValue(current);
+    return;
+  }
+  if (stored !== current) {
+    colsInput.value = stored;
+    syncColumnsDialogFromInputValue(stored);
+    refreshDashboardFromViewState();
+    return;
+  }
+  syncColumnsDialogFromInputValue(current);
+}
+
 function readStoredColumnWidths() {
   try {
-    const raw = localStorage.getItem(STORAGE_KEYS.columns);
+    const raw = localStorage.getItem(STORAGE_KEYS.columnWidths);
     if (!raw) {
       return {};
     }
@@ -121,16 +243,16 @@ function readStoredColumnWidths() {
     }
     return widths;
   } catch (error) {
-    logUiError(`failed to read column widths from localStorage key "${STORAGE_KEYS.columns}"`, error);
+    logUiError(`failed to read column widths from localStorage key "${STORAGE_KEYS.columnWidths}"`, error);
     return {};
   }
 }
 
 function writeStoredColumnWidths(widths) {
   try {
-    localStorage.setItem(STORAGE_KEYS.columns, JSON.stringify(widths));
+    localStorage.setItem(STORAGE_KEYS.columnWidths, JSON.stringify(widths));
   } catch (error) {
-    logUiError(`failed to write column widths to localStorage key "${STORAGE_KEYS.columns}"`, error);
+    logUiError(`failed to write column widths to localStorage key "${STORAGE_KEYS.columnWidths}"`, error);
   }
 }
 
@@ -275,6 +397,12 @@ function persistCurrentViewState() {
   const filter = String(document.querySelector("#filter-input")?.value || "").trim();
   const sort = String(document.querySelector("#sort-input")?.value || "").trim();
   const dir = String(document.querySelector("#dir-input")?.value || "").trim();
+  const colsInput = columnsInputEl();
+  const cols = normalizeVisibleColumnsValue(colsInput?.value || "");
+
+  if (colsInput) {
+    colsInput.value = cols;
+  }
 
   if (FILTER_VALUES.includes(filter)) {
     writeCookie(STORAGE_KEYS.filter, filter);
@@ -285,6 +413,7 @@ function persistCurrentViewState() {
   if (dir === "asc" || dir === "desc") {
     writeCookie(STORAGE_KEYS.dir, dir);
   }
+  writeStoredVisibleColumns(cols);
 }
 
 function initDashboardUi() {
@@ -313,7 +442,11 @@ function initDashboardUi() {
     const target = event.detail?.target;
     if (target?.id === "dashboard") {
       renderConnection();
+      syncStoredVisibleColumnsToViewState();
       ensureColumnResizers();
+    }
+    if (target?.id === "controls-panel") {
+      syncStoredVisibleColumnsToViewState();
     }
     if (target?.id === "file-list") {
       ensureColumnResizers();
@@ -348,11 +481,32 @@ function initDashboardUi() {
     box.removeAttribute("data-client-error");
   });
 
+  document.body.addEventListener("submit", function (event) {
+    const form = event.target;
+    if (!form || form.id !== "columns-form") {
+      return;
+    }
+
+    const selected = [];
+    const checkboxes = form.querySelectorAll('input[name="visibleCol"]:checked');
+    for (const checkbox of checkboxes) {
+      selected.push(String(checkbox.value || ""));
+    }
+
+    const encoded = normalizeVisibleColumnsValue(selected.join(","));
+    const colsInput = columnsInputEl();
+    if (colsInput) {
+      colsInput.value = encoded;
+    }
+    writeStoredVisibleColumns(encoded);
+  });
+
   document.body.addEventListener("pointerdown", onColumnResizeStart);
   document.body.addEventListener("pointermove", onColumnResizeMove);
   document.body.addEventListener("pointerup", onColumnResizeEnd);
   document.body.addEventListener("pointercancel", onColumnResizeEnd);
 
+  syncStoredVisibleColumnsToViewState();
   ensureColumnResizers();
 }
 

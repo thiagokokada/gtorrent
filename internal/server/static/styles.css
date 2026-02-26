@@ -350,7 +350,7 @@ table {
   width: 100%;
   border-collapse: collapse;
   table-layout: fixed;
-  min-width: 1260px;
+  min-width: 1380px;
 }
 
 thead th {
@@ -377,6 +377,17 @@ thead th {
 
 .sort-btn:hover {
   background: #c8d8eb;
+}
+
+.th-label {
+  display: inline-flex;
+  align-items: center;
+  width: 100%;
+  min-height: 28px;
+  padding: 0.28rem 0.44rem;
+  color: #2f445a;
+  font-size: 0.74rem;
+  font-weight: 700;
 }
 
 .col-resizer {
@@ -429,6 +440,14 @@ tbody tr.active {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.hash {
+  font-family: "Courier New", monospace;
+  font-size: 0.72rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .added,
@@ -604,6 +623,30 @@ input[type="file"]::file-selector-button {
   gap: 0.35rem;
 }
 
+.columns-form {
+  gap: 0.65rem;
+}
+
+.columns-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.35rem 0.5rem;
+}
+
+.column-visibility-option {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.32rem;
+  font-size: 0.78rem;
+  color: var(--text);
+}
+
+.column-visibility-option input[type="checkbox"] {
+  width: 14px;
+  height: 14px;
+  margin: 0;
+}
+
 .remove-form {
   gap: 0.65rem;
 }
@@ -718,6 +761,10 @@ input[type="file"]::file-selector-button {
 
   .search-form button {
     justify-self: end;
+  }
+
+  .columns-grid {
+    grid-template-columns: 1fr;
   }
 
   .speed-limit-form {

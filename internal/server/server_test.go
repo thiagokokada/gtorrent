@@ -282,6 +282,15 @@ func TestDashboardEndpointRendersTorrentRows(t *testing.T) {
 	if row == nil {
 		t.Fatalf("expected row selection to refresh full dashboard, body=%s", body)
 	}
+	hashCell := findElement(doc, func(n *html.Node) bool {
+		if n.Type != html.ElementNode || n.Data != "td" {
+			return false
+		}
+		return hasClass(n, "hash")
+	})
+	if hashCell == nil || !textContains(hashCell, "abc") {
+		t.Fatalf("expected hash column in file list row, body=%s", body)
+	}
 }
 
 func TestDashboardRendersFilterAndSortURLs(t *testing.T) {
@@ -357,6 +366,97 @@ func TestDashboardRendersFilterAndSortURLs(t *testing.T) {
 	})
 	if refreshButton == nil {
 		t.Fatalf("expected refresh button to refresh full dashboard, body=%s", body)
+	}
+	openColumnsIndex := strings.Index(body, `id="open-columns"`)
+	refreshIndex := strings.Index(body, `id="refresh"`)
+	if openColumnsIndex < 0 || refreshIndex < 0 || openColumnsIndex > refreshIndex {
+		t.Fatalf("expected columns action before refresh action, body=%s", body)
+	}
+}
+
+func TestDashboardRendersConfiguredVisibleColumns(t *testing.T) {
+	s, err := New(&mockService{
+		listFn: func(context.Context) ([]domain.Torrent, error) {
+			return []domain.Torrent{{Hash: "abc", Name: "Ubuntu ISO", State: "downloading"}}, nil
+		},
+	})
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/ui/dashboard?cols=name,hash,state", nil)
+	rr := httptest.NewRecorder()
+	s.Handler().ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d, body=%s", rr.Code, rr.Body.String())
+	}
+
+	body := rr.Body.String()
+	doc := parseHTML(t, body)
+	colsInput := findByID(doc, "cols-input")
+	if colsInput == nil || !hasAttrs(colsInput, map[string]string{"name": "cols", "value": "name,hash,state"}) {
+		t.Fatalf("expected normalized visible columns in view-state, body=%s", body)
+	}
+	hashHeader := findElement(doc, func(n *html.Node) bool {
+		if n.Type != html.ElementNode || n.Data != "th" {
+			return false
+		}
+		return hasAttrs(n, map[string]string{"data-col": "hash"})
+	})
+	if hashHeader == nil {
+		t.Fatalf("expected hash column header when configured, body=%s", body)
+	}
+	addedHeader := findElement(doc, func(n *html.Node) bool {
+		if n.Type != html.ElementNode || n.Data != "th" {
+			return false
+		}
+		return hasAttrs(n, map[string]string{"data-col": "addedAt"})
+	})
+	if addedHeader != nil {
+		t.Fatalf("did not expect hidden added column header, body=%s", body)
+	}
+	refreshButton := findElement(doc, func(n *html.Node) bool {
+		if n.Type != html.ElementNode {
+			return false
+		}
+		return hasAttrs(n, map[string]string{
+			"id":     "refresh",
+			"hx-get": "/ui/dashboard?cols=name%2Chash%2Cstate&dir=desc&filter=all&sort=addedAt",
+		})
+	})
+	if refreshButton == nil {
+		t.Fatalf("expected refresh URL to preserve visible columns state, body=%s", body)
+	}
+}
+
+func TestDashboardColumnVisibilityFormSelectionControlsVisibleColumns(t *testing.T) {
+	s, err := New(&mockService{
+		listFn: func(context.Context) ([]domain.Torrent, error) {
+			return nil, nil
+		},
+	})
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/ui/dashboard?applyCols=1&visibleCol=name&visibleCol=hash", nil)
+	rr := httptest.NewRecorder()
+	s.Handler().ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d, body=%s", rr.Code, rr.Body.String())
+	}
+
+	body := rr.Body.String()
+	doc := parseHTML(t, body)
+	colsInput := findByID(doc, "cols-input")
+	if colsInput == nil || !hasAttrs(colsInput, map[string]string{"value": "name,hash"}) {
+		t.Fatalf("expected cols state from visibleCol selection, body=%s", body)
+	}
+	placeholder := findByClass(doc, "placeholder")
+	if placeholder == nil || !hasAttrs(placeholder, map[string]string{"colspan": "2"}) {
+		t.Fatalf("expected placeholder row, body=%s", body)
 	}
 }
 
@@ -719,6 +819,115 @@ func TestDashboardOpenAddHTMXReturnsOpenAddDialogOnly(t *testing.T) {
 	}
 	if findByID(doc, "view-state") != nil {
 		t.Fatalf("did not expect view-state fragment for open-add, body=%s", body)
+	}
+}
+
+func TestDashboardCancelColumnsHTMXReturnsControlsOnly(t *testing.T) {
+	s, err := New(&mockService{
+		listFn: func(context.Context) ([]domain.Torrent, error) {
+			return []domain.Torrent{{Hash: "abc", Name: "Ubuntu ISO", State: "downloading"}}, nil
+		},
+	})
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/ui/dashboard?selected=abc", nil)
+	req.Header.Set("HX-Request", "true")
+	req.Header.Set("HX-Target", "cancel-columns")
+	req.Header.Set("HX-Trigger", "cancel-columns")
+	rr := httptest.NewRecorder()
+	s.Handler().ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d, body=%s", rr.Code, rr.Body.String())
+	}
+	body := rr.Body.String()
+	doc := parseHTML(t, body)
+	if findByID(doc, "dashboard") != nil {
+		t.Fatalf("did not expect full dashboard for htmx fragment request, body=%s", body)
+	}
+	controlsPanel := findByID(doc, "controls-panel")
+	if controlsPanel == nil || !hasClasses(controlsPanel, "controls", "card") || !hasAttrs(controlsPanel, map[string]string{"hx-swap-oob": "outerHTML"}) {
+		t.Fatalf("expected controls fragment oob swap, body=%s", body)
+	}
+	columnsDialog := findByID(doc, "columns-dialog")
+	if columnsDialog == nil || hasAttr(columnsDialog, "open") {
+		t.Fatalf("did not expect open columns dialog for cancel-columns, body=%s", body)
+	}
+	if findByID(doc, "file-list") != nil {
+		t.Fatalf("did not expect file-list fragment for cancel-columns, body=%s", body)
+	}
+	if findByID(doc, "form-message") != nil {
+		t.Fatalf("did not expect status fragment for cancel-columns, body=%s", body)
+	}
+	if findByID(doc, "global-stats") != nil {
+		t.Fatalf("did not expect stats fragment for cancel-columns, body=%s", body)
+	}
+	if findByID(doc, "view-state") != nil {
+		t.Fatalf("did not expect view-state fragment for cancel-columns, body=%s", body)
+	}
+}
+
+func TestDashboardOpenColumnsHTMXReturnsOpenColumnsDialogControlsOnly(t *testing.T) {
+	s, err := New(&mockService{
+		listFn: func(context.Context) ([]domain.Torrent, error) {
+			return []domain.Torrent{{Hash: "abc", Name: "Ubuntu ISO", State: "downloading"}}, nil
+		},
+	})
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/ui/dashboard?selected=abc", nil)
+	req.Header.Set("HX-Request", "true")
+	req.Header.Set("HX-Target", "open-columns")
+	req.Header.Set("HX-Trigger", "open-columns")
+	rr := httptest.NewRecorder()
+	s.Handler().ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d, body=%s", rr.Code, rr.Body.String())
+	}
+	body := rr.Body.String()
+	doc := parseHTML(t, body)
+	if findByID(doc, "dashboard") != nil {
+		t.Fatalf("did not expect full dashboard for htmx fragment request, body=%s", body)
+	}
+	controlsPanel := findByID(doc, "controls-panel")
+	if controlsPanel == nil || !hasClasses(controlsPanel, "controls", "card") || !hasAttrs(controlsPanel, map[string]string{"hx-swap-oob": "outerHTML"}) {
+		t.Fatalf("expected controls fragment oob swap, body=%s", body)
+	}
+	columnsDialog := findByID(doc, "columns-dialog")
+	if columnsDialog == nil || !hasClass(columnsDialog, "columns-dialog") || !hasAttr(columnsDialog, "open") {
+		t.Fatalf("expected open columns dialog in controls fragment, body=%s", body)
+	}
+	columnsForm := findByID(doc, "columns-form")
+	if columnsForm == nil || !hasAttrs(columnsForm, map[string]string{
+		"hx-get":     "/ui/dashboard",
+		"hx-include": "#view-state",
+	}) {
+		t.Fatalf("expected columns form configured in open dialog, body=%s", body)
+	}
+	cancelButton := findByID(doc, "cancel-columns")
+	if cancelButton == nil || !hasAttrs(cancelButton, map[string]string{
+		"hx-get":    "/ui/dashboard?dir=desc&filter=all&selected=abc&sort=addedAt",
+		"hx-target": "#cancel-columns",
+		"hx-swap":   "none",
+	}) {
+		t.Fatalf("expected cancel button to use server-side close flow, body=%s", body)
+	}
+	if findByID(doc, "file-list") != nil {
+		t.Fatalf("did not expect file-list fragment for open-columns, body=%s", body)
+	}
+	if findByID(doc, "form-message") != nil {
+		t.Fatalf("did not expect status fragment for open-columns, body=%s", body)
+	}
+	if findByID(doc, "global-stats") != nil {
+		t.Fatalf("did not expect stats fragment for open-columns, body=%s", body)
+	}
+	if findByID(doc, "view-state") != nil {
+		t.Fatalf("did not expect view-state fragment for open-columns, body=%s", body)
 	}
 }
 
