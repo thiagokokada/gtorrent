@@ -143,25 +143,6 @@ body.col-resizing {
   flex-wrap: wrap;
 }
 
-.remove-data-toggle {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.22rem;
-  min-height: 25px;
-  font-size: 0.7rem;
-  color: #5b6d83;
-  text-transform: uppercase;
-  letter-spacing: 0.03em;
-  font-weight: 700;
-  white-space: nowrap;
-}
-
-.remove-data-toggle input[type="checkbox"] {
-  width: 14px;
-  height: 14px;
-  margin: 0;
-}
-
 .filter-row {
   gap: 0.26rem;
 }
@@ -623,6 +604,45 @@ input[type="file"]::file-selector-button {
   gap: 0.35rem;
 }
 
+.remove-form {
+  gap: 0.65rem;
+}
+
+.remove-summary {
+  display: grid;
+  gap: 0.3rem;
+  margin: 0;
+  padding: 0.45rem 0.5rem;
+  border: 1px solid #c4cfdd;
+  border-radius: 4px;
+  background: #eef3fb;
+}
+
+.remove-summary p {
+  margin: 0;
+  font-size: 0.78rem;
+}
+
+.remove-summary code {
+  font-family: "Courier New", monospace;
+  font-size: 0.74rem;
+}
+
+.remove-delete-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.32rem;
+  font-size: 0.78rem;
+  color: var(--text);
+  font-weight: 700;
+}
+
+.remove-delete-toggle input[type="checkbox"] {
+  width: 14px;
+  height: 14px;
+  margin: 0;
+}
+
 @media (max-width: 760px) {
   .app-shell {
     padding: 0.2rem;
@@ -660,11 +680,6 @@ input[type="file"]::file-selector-button {
 
   .action-row button {
     width: 100%;
-  }
-
-  .remove-data-toggle {
-    grid-column: 1 / -1;
-    justify-self: start;
   }
 
   .filter-row {

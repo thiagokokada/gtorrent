@@ -542,20 +542,40 @@ func TestDashboardRendersSelectedActionButtons(t *testing.T) {
 		if n.Type != html.ElementNode {
 			return false
 		}
-		return hasAttrs(n, map[string]string{"hx-post": "/ui/torrents/abc/remove"})
+		return hasAttrs(n, map[string]string{"id": "open-remove", "hx-get": "/ui/dashboard?dir=desc&filter=all&selected=abc&sort=addedAt"})
 	})
 	if removeButton == nil {
-		t.Fatalf("expected selected remove button, body=%s", body)
+		t.Fatalf("expected selected remove dialog trigger button, body=%s", body)
 	}
-	if !hasAttrs(removeButton, map[string]string{"hx-include": "#view-state,#remove-delete-data"}) {
-		t.Fatalf("expected remove button to include delete-data field, body=%s", body)
+
+	removeDialog := findByID(doc, "remove-dialog")
+	if removeDialog == nil || !hasClass(removeDialog, "remove-dialog") {
+		t.Fatalf("expected remove dialog, body=%s", body)
 	}
+	if hasAttr(removeDialog, "open") {
+		t.Fatalf("did not expect remove dialog open by default, body=%s", body)
+	}
+
+	removeForm := findByID(doc, "remove-form")
+	if removeForm == nil || !hasAttrs(removeForm, map[string]string{
+		"hx-post":    "/ui/torrents/abc/remove",
+		"hx-include": "#view-state,#remove-delete-data",
+	}) {
+		t.Fatalf("expected remove form submission with delete-data include, body=%s", body)
+	}
+
 	deleteDataInput := findByID(doc, "remove-delete-data")
 	if deleteDataInput == nil || !hasAttrs(deleteDataInput, map[string]string{"name": "deleteData", "value": "true"}) {
 		t.Fatalf("expected delete-data checkbox, body=%s", body)
 	}
 	if hasAttr(deleteDataInput, "disabled") {
 		t.Fatalf("did not expect delete-data checkbox to be disabled when a torrent is selected, body=%s", body)
+	}
+	if !textContains(doc, "Name:") || !textContains(doc, "Ubuntu ISO") {
+		t.Fatalf("expected selected torrent name in remove dialog, body=%s", body)
+	}
+	if !textContains(doc, "Hash:") || !textContains(doc, "abc") {
+		t.Fatalf("expected selected torrent hash in remove dialog, body=%s", body)
 	}
 }
 
@@ -699,6 +719,107 @@ func TestDashboardOpenAddHTMXReturnsOpenAddDialogOnly(t *testing.T) {
 	}
 	if findByID(doc, "view-state") != nil {
 		t.Fatalf("did not expect view-state fragment for open-add, body=%s", body)
+	}
+}
+
+func TestDashboardCancelRemoveHTMXReturnsControlsOnly(t *testing.T) {
+	s, err := New(&mockService{
+		listFn: func(context.Context) ([]domain.Torrent, error) {
+			return []domain.Torrent{{Hash: "abc", Name: "Ubuntu ISO", State: "downloading"}}, nil
+		},
+	})
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/ui/dashboard?selected=abc", nil)
+	req.Header.Set("HX-Request", "true")
+	req.Header.Set("HX-Target", "cancel-remove")
+	req.Header.Set("HX-Trigger", "cancel-remove")
+	rr := httptest.NewRecorder()
+	s.Handler().ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d, body=%s", rr.Code, rr.Body.String())
+	}
+	body := rr.Body.String()
+	doc := parseHTML(t, body)
+	if findByID(doc, "dashboard") != nil {
+		t.Fatalf("did not expect full dashboard for htmx fragment request, body=%s", body)
+	}
+	controlsPanel := findByID(doc, "controls-panel")
+	if controlsPanel == nil || !hasClasses(controlsPanel, "controls", "card") || !hasAttrs(controlsPanel, map[string]string{"hx-swap-oob": "outerHTML"}) {
+		t.Fatalf("expected controls fragment oob swap, body=%s", body)
+	}
+	removeDialog := findByID(doc, "remove-dialog")
+	if removeDialog == nil || hasAttr(removeDialog, "open") {
+		t.Fatalf("did not expect open remove dialog for cancel-remove, body=%s", body)
+	}
+	if findByID(doc, "file-list") != nil {
+		t.Fatalf("did not expect file-list fragment for cancel-remove, body=%s", body)
+	}
+	if findByID(doc, "form-message") != nil {
+		t.Fatalf("did not expect status fragment for cancel-remove, body=%s", body)
+	}
+	if findByID(doc, "global-stats") != nil {
+		t.Fatalf("did not expect stats fragment for cancel-remove, body=%s", body)
+	}
+	if findByID(doc, "view-state") != nil {
+		t.Fatalf("did not expect view-state fragment for cancel-remove, body=%s", body)
+	}
+}
+
+func TestDashboardOpenRemoveHTMXReturnsOpenRemoveDialogControlsOnly(t *testing.T) {
+	s, err := New(&mockService{
+		listFn: func(context.Context) ([]domain.Torrent, error) {
+			return []domain.Torrent{{Hash: "abc", Name: "Ubuntu ISO", State: "downloading"}}, nil
+		},
+	})
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/ui/dashboard?selected=abc", nil)
+	req.Header.Set("HX-Request", "true")
+	req.Header.Set("HX-Target", "open-remove")
+	req.Header.Set("HX-Trigger", "open-remove")
+	rr := httptest.NewRecorder()
+	s.Handler().ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d, body=%s", rr.Code, rr.Body.String())
+	}
+	body := rr.Body.String()
+	doc := parseHTML(t, body)
+	if findByID(doc, "dashboard") != nil {
+		t.Fatalf("did not expect full dashboard for htmx fragment request, body=%s", body)
+	}
+	controlsPanel := findByID(doc, "controls-panel")
+	if controlsPanel == nil || !hasClasses(controlsPanel, "controls", "card") || !hasAttrs(controlsPanel, map[string]string{"hx-swap-oob": "outerHTML"}) {
+		t.Fatalf("expected controls fragment oob swap, body=%s", body)
+	}
+	removeDialog := findByID(doc, "remove-dialog")
+	if removeDialog == nil || !hasClass(removeDialog, "remove-dialog") || !hasAttr(removeDialog, "open") {
+		t.Fatalf("expected open remove dialog in controls fragment, body=%s", body)
+	}
+	removeForm := findByID(doc, "remove-form")
+	if removeForm == nil || !hasAttrs(removeForm, map[string]string{"hx-post": "/ui/torrents/abc/remove", "hx-include": "#view-state,#remove-delete-data"}) {
+		t.Fatalf("expected remove form configured in open remove dialog, body=%s", body)
+	}
+	if !textContains(doc, "Ubuntu ISO") || !textContains(doc, "abc") {
+		t.Fatalf("expected selected torrent details in open remove dialog, body=%s", body)
+	}
+	if findByID(doc, "file-list") != nil {
+		t.Fatalf("did not expect file-list fragment for open-remove, body=%s", body)
+	}
+	if findByID(doc, "form-message") != nil {
+		t.Fatalf("did not expect status fragment for open-remove, body=%s", body)
+	}
+	if findByID(doc, "global-stats") != nil {
+		t.Fatalf("did not expect stats fragment for open-remove, body=%s", body)
+	}
+	if findByID(doc, "view-state") != nil {
+		t.Fatalf("did not expect view-state fragment for open-remove, body=%s", body)
 	}
 }
 

@@ -71,11 +71,12 @@ type viewParams struct {
 }
 
 type flashMessage struct {
-	Kind          string
-	Message       string
-	OpenAddDialog bool
-	AddFormError  string
-	AddFormMagnet string
+	Kind             string
+	Message          string
+	OpenAddDialog    bool
+	OpenRemoveDialog bool
+	AddFormError     string
+	AddFormMagnet    string
 }
 
 type torrentRow struct {
@@ -104,6 +105,7 @@ type dashboardView struct {
 	ColumnMinWidths  map[string]int
 	HasSelected      bool
 	SelectedHash     string
+	SelectedName     string
 	SelectedRunning  bool
 	DownloadLimitKiB int64
 	UploadLimitKiB   int64
@@ -117,6 +119,7 @@ type dashboardView struct {
 	FilterURLs       map[string]string
 	SortURLs         map[string]string
 	OpenAddDialog    bool
+	OpenRemoveDialog bool
 	AddFormError     string
 	AddFormMagnet    string
 	SwapOOB          bool
@@ -158,6 +161,9 @@ var (
 	}
 	fragmentsAddDialogOnly = dashboardFragments{
 		AddDialog: true,
+	}
+	fragmentsControlsOnly = dashboardFragments{
+		Controls: true,
 	}
 	fragmentsControlsAndStatus = dashboardFragments{
 		Controls: true,
@@ -269,6 +275,11 @@ func (s *Server) handleUIDashboard(w http.ResponseWriter, r *http.Request) {
 	case "open-add":
 		fragments = fragmentsAddDialogOnly
 		flash.OpenAddDialog = true
+	case "cancel-remove":
+		fragments = fragmentsControlsOnly
+	case "open-remove":
+		fragments = fragmentsControlsOnly
+		flash.OpenRemoveDialog = true
 	}
 	s.renderDashboardResponse(w, r, r.Context(), params, flash, fragments)
 }
@@ -764,6 +775,9 @@ func (s *Server) dashboardViewWithFlash(ctx context.Context, params viewParams, 
 	if flash.OpenAddDialog || strings.TrimSpace(flash.AddFormError) != "" {
 		view.OpenAddDialog = true
 	}
+	if flash.OpenRemoveDialog && view.HasSelected {
+		view.OpenRemoveDialog = true
+	}
 	if strings.TrimSpace(flash.AddFormError) != "" {
 		view.AddFormError = strings.TrimSpace(flash.AddFormError)
 		view.AddFormMagnet = strings.TrimSpace(flash.AddFormMagnet)
@@ -786,6 +800,7 @@ func (s *Server) buildDashboardView(ctx context.Context, params viewParams) (das
 	selectedHash := strings.TrimSpace(params.Selected)
 	selectedFound := false
 	selectedRunning := false
+	selectedName := ""
 
 	for _, item := range filtered {
 		state := normalizeState(item.State)
@@ -815,6 +830,7 @@ func (s *Server) buildDashboardView(ctx context.Context, params viewParams) (das
 		if active {
 			selectedFound = true
 			selectedRunning = state == "downloading" || state == "seeding"
+			selectedName = torrentDisplayName(item)
 		}
 		downTotal += item.DownRate
 		upTotal += item.UpRate
@@ -824,6 +840,7 @@ func (s *Server) buildDashboardView(ctx context.Context, params viewParams) (das
 		params.Selected = ""
 		selectedHash = ""
 		selectedRunning = false
+		selectedName = ""
 	}
 
 	statusKind, statusMessage := statusFromBackendStatus(s.currentBackendStatus(nil))
@@ -835,6 +852,7 @@ func (s *Server) buildDashboardView(ctx context.Context, params viewParams) (das
 		ColumnMinWidths:  fileListColumnMinWidths,
 		HasSelected:      selectedHash != "",
 		SelectedHash:     selectedHash,
+		SelectedName:     selectedName,
 		SelectedRunning:  selectedRunning,
 		DownloadLimitKiB: speedLimits.DownloadKiB,
 		UploadLimitKiB:   speedLimits.UploadKiB,
