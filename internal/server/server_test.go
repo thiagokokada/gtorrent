@@ -546,6 +546,16 @@ func TestDashboardRendersSelectedActionButtons(t *testing.T) {
 	if removeButton == nil {
 		t.Fatalf("expected selected remove button, body=%s", body)
 	}
+	if !hasAttrs(removeButton, map[string]string{"hx-include": "#view-state,#remove-delete-data"}) {
+		t.Fatalf("expected remove button to include delete-data field, body=%s", body)
+	}
+	deleteDataInput := findByID(doc, "remove-delete-data")
+	if deleteDataInput == nil || !hasAttrs(deleteDataInput, map[string]string{"name": "deleteData", "value": "true"}) {
+		t.Fatalf("expected delete-data checkbox, body=%s", body)
+	}
+	if hasAttr(deleteDataInput, "disabled") {
+		t.Fatalf("did not expect delete-data checkbox to be disabled when a torrent is selected, body=%s", body)
+	}
 }
 
 func TestDashboardHTMXReturnsFragmentBundle(t *testing.T) {
@@ -1214,6 +1224,45 @@ func TestTorrentActionRemove(t *testing.T) {
 	body := rr.Body.String()
 	doc := parseHTML(t, body)
 	if !textContains(doc, "Torrent removed") {
+		t.Fatalf("expected success flash, body=%s", body)
+	}
+}
+
+func TestTorrentActionRemoveWithDeleteData(t *testing.T) {
+	called := false
+	s, err := New(&mockService{
+		listFn: func(context.Context) ([]domain.Torrent, error) {
+			return []domain.Torrent{{Hash: "abc", Name: "Ubuntu ISO"}}, nil
+		},
+		removeFn: func(_ context.Context, hash string, deleteData bool) error {
+			called = true
+			if hash != "abc" {
+				t.Fatalf("unexpected hash %q", hash)
+			}
+			if !deleteData {
+				t.Fatalf("expected deleteData=true")
+			}
+			return nil
+		},
+	})
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/ui/torrents/abc/remove", strings.NewReader("filter=all&sort=addedAt&dir=desc&deleteData=true"))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	rr := httptest.NewRecorder()
+	s.Handler().ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d, body=%s", rr.Code, rr.Body.String())
+	}
+	if !called {
+		t.Fatalf("expected Remove call")
+	}
+	body := rr.Body.String()
+	doc := parseHTML(t, body)
+	if !textContains(doc, "Torrent removed and data deleted") {
 		t.Fatalf("expected success flash, body=%s", body)
 	}
 }

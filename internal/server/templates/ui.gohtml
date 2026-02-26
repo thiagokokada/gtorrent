@@ -64,13 +64,17 @@
       <button type="button" id="remove-selected" class="danger"
         hx-post="/ui/torrents/{{urlquery .SelectedHash}}/remove"
         hx-swap="none"
-        hx-include="#view-state"
+        hx-include="#view-state,#remove-delete-data"
         hx-confirm="Remove selected torrent?">Remove</button>
       {{else}}
       <button type="button" id="toggle-selected" class="secondary" disabled>Start</button>
       <button type="button" id="recheck-selected" class="secondary" disabled>Recheck</button>
       <button type="button" id="remove-selected" class="danger" disabled>Remove</button>
       {{end}}
+      <label class="remove-data-toggle" for="remove-delete-data">
+        <input type="checkbox" id="remove-delete-data" name="deleteData" value="true"{{if not .HasSelected}} disabled{{end}}>
+        <span>Delete data</span>
+      </label>
       <button type="button" id="refresh" class="secondary"
         hx-get="{{.DashboardURL}}"
         hx-target="#dashboard"

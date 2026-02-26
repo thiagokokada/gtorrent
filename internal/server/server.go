@@ -375,8 +375,13 @@ func (s *Server) handleUITorrentAction(w http.ResponseWriter, r *http.Request) {
 		err = s.svc.Recheck(r.Context(), hash)
 		message = "Torrent recheck requested"
 	case "remove":
-		err = s.svc.Remove(r.Context(), hash, false)
-		message = "Torrent removed"
+		deleteData := parseBoolFormValue(r.Form.Get("deleteData"))
+		err = s.svc.Remove(r.Context(), hash, deleteData)
+		if deleteData {
+			message = "Torrent removed and data deleted"
+		} else {
+			message = "Torrent removed"
+		}
 	default:
 		s.renderDashboardResponse(w, r, r.Context(), params, flashMessage{Kind: "error", Message: "unknown action"}, fragmentsAll)
 		return
@@ -1028,6 +1033,15 @@ func parseNonNegativeInt64(raw string) (int64, error) {
 		return 0, errors.New("negative value")
 	}
 	return parsed, nil
+}
+
+func parseBoolFormValue(raw string) bool {
+	switch strings.ToLower(strings.TrimSpace(raw)) {
+	case "1", "true", "on", "yes":
+		return true
+	default:
+		return false
+	}
 }
 
 func defaultViewParams() viewParams {

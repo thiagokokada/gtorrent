@@ -103,5 +103,5 @@ CGO_ENABLED=0 GOCACHE=/tmp/go-cache go generate ./internal/server
 
 ## Notes
 
-- `deleteData=true` is best-effort; the current implementation runs stop/close before erase.
+- `deleteData=true` removes the torrent entry with XML-RPC and then deletes the resolved payload path from disk using native Go file operations.
 - rTorrent XML-RPC methods can vary by setup. If your deployment uses different method names, adapt `internal/rtorrent/client.go`.

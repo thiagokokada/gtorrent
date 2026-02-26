@@ -3,6 +3,8 @@ package rtorrent
 import (
 	"context"
 	"errors"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -91,6 +93,76 @@ func TestRemoveCallsErase(t *testing.T) {
 	}
 	if len(rpc.calls) != 1 || rpc.calls[0] != "d.erase" {
 		t.Fatalf("unexpected calls: %v", rpc.calls)
+	}
+}
+
+func TestRemoveWithDeleteDataDeletesResolvedPath(t *testing.T) {
+	tmpDir := t.TempDir()
+	dataPath := filepath.Join(tmpDir, "payload")
+	if err := os.MkdirAll(dataPath, 0o755); err != nil {
+		t.Fatalf("MkdirAll() error = %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dataPath, "piece.bin"), []byte("abc"), 0o644); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+
+	rpc := &mockRPC{
+		fn: func(method string, _ ...any) (any, error) {
+			switch method {
+			case "d.base_path":
+				return dataPath, nil
+			case "d.stop", "d.close", "d.erase":
+				return nil, nil
+			default:
+				t.Fatalf("unexpected method: %s", method)
+			}
+			return nil, nil
+		},
+	}
+
+	client := NewClient(rpc)
+	if err := client.Remove(context.Background(), "abc", true); err != nil {
+		t.Fatalf("Remove() error = %v", err)
+	}
+	if _, err := os.Stat(dataPath); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("expected data path to be removed, statErr=%v", err)
+	}
+	if len(rpc.calls) != 4 {
+		t.Fatalf("unexpected calls: %v", rpc.calls)
+	}
+	if rpc.calls[0] != "d.base_path" || rpc.calls[1] != "d.stop" || rpc.calls[2] != "d.close" || rpc.calls[3] != "d.erase" {
+		t.Fatalf("unexpected calls order: %v", rpc.calls)
+	}
+}
+
+func TestRemoveWithDeleteDataReturnsPartialErrorWhenDataPathLookupFails(t *testing.T) {
+	rpc := &mockRPC{
+		fn: func(method string, _ ...any) (any, error) {
+			switch method {
+			case "d.base_path", "d.base_filename":
+				return nil, errors.New("unsupported")
+			case "d.stop", "d.close", "d.erase":
+				return nil, nil
+			default:
+				t.Fatalf("unexpected method: %s", method)
+			}
+			return nil, nil
+		},
+	}
+
+	client := NewClient(rpc)
+	err := client.Remove(context.Background(), "abc", true)
+	if err == nil {
+		t.Fatalf("expected Remove() error")
+	}
+	if !strings.Contains(err.Error(), "torrent removed but failed to determine data path") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(rpc.calls) != 5 {
+		t.Fatalf("unexpected calls: %v", rpc.calls)
+	}
+	if rpc.calls[len(rpc.calls)-1] != "d.erase" {
+		t.Fatalf("expected erase to run even when data path lookup fails, calls=%v", rpc.calls)
 	}
 }
 

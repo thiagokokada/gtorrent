@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"log/slog"
 	"math"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
@@ -318,18 +320,95 @@ func (c *Client) Remove(ctx context.Context, hash string, deleteData bool) error
 	}
 
 	slog.Info("removing torrent", "hash", hash, "delete_data", deleteData)
+	var dataPath string
+	var pathErr error
 	if deleteData {
-		_, _ = c.rpc.Call(ctx, "d.stop", hash)
-		_, _ = c.rpc.Call(ctx, "d.close", hash)
+		dataPath, pathErr = c.resolveTorrentDataPath(ctx, hash)
+		if pathErr != nil {
+			// Keep removing the torrent entry even if data-path lookup fails.
+			slog.Warn("torrent data path lookup failed before erase", "hash", hash, "error", pathErr)
+		}
+		c.prepareTorrentForErase(ctx, hash)
 	}
-	_, err := c.rpc.Call(ctx, "d.erase", hash)
-	if err != nil {
-		wrapped := fmt.Errorf("remove torrent: %w", err)
+	if err := c.eraseTorrent(ctx, hash); err != nil {
+		wrapped := fmt.Errorf("remove torrent failed: %w", err)
 		slog.Error("remove torrent failed", "hash", hash, "error", wrapped)
 		return wrapped
 	}
+
+	if deleteData {
+		if pathErr != nil {
+			return fmt.Errorf("torrent removed but failed to determine data path: %w", pathErr)
+		}
+		if err := os.RemoveAll(dataPath); err != nil {
+			return fmt.Errorf("torrent removed but failed to delete data path %q: %w", dataPath, err)
+		}
+		slog.Info("torrent data deleted", "hash", hash, "path", dataPath)
+	}
+
 	slog.Info("torrent removed", "hash", hash)
 	return nil
+}
+
+func (c *Client) prepareTorrentForErase(ctx context.Context, hash string) {
+	_, _ = c.rpc.Call(ctx, "d.stop", hash)
+	_, _ = c.rpc.Call(ctx, "d.close", hash)
+}
+
+func (c *Client) eraseTorrent(ctx context.Context, hash string) error {
+	_, err := c.rpc.Call(ctx, "d.erase", hash)
+	if err != nil {
+		return fmt.Errorf("erase torrent: %w", err)
+	}
+	return nil
+}
+
+func (c *Client) resolveTorrentDataPath(ctx context.Context, hash string) (string, error) {
+	var lastErr error
+	for _, method := range []string{"d.base_path", "d.base_filename"} {
+		result, err := c.rpc.Call(ctx, method, hash)
+		if err != nil {
+			lastErr = fmt.Errorf("%s call failed: %w", method, err)
+			continue
+		}
+
+		path, err := sanitizeDataPath(asString(result))
+		if err != nil {
+			lastErr = fmt.Errorf("%s returned invalid path: %w", method, err)
+			continue
+		}
+		return path, nil
+	}
+
+	if lastErr != nil {
+		return "", fmt.Errorf("lookup data path failed: %w", lastErr)
+	}
+	return "", errors.New("lookup data path failed")
+}
+
+func sanitizeDataPath(raw string) (string, error) {
+	path := strings.TrimSpace(raw)
+	if path == "" || path == "<nil>" {
+		return "", errors.New("empty path")
+	}
+
+	clean := filepath.Clean(path)
+	if !filepath.IsAbs(clean) {
+		return "", errors.New("path is not absolute")
+	}
+	if clean == filepath.Clean(string(os.PathSeparator)) {
+		return "", errors.New("refusing to delete filesystem root")
+	}
+
+	volume := filepath.VolumeName(clean)
+	if volume != "" {
+		root := filepath.Clean(volume + string(os.PathSeparator))
+		if clean == root {
+			return "", errors.New("refusing to delete drive root")
+		}
+	}
+
+	return clean, nil
 }
 
 func (c *Client) Start(ctx context.Context, hash string) error {
