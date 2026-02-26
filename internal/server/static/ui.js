@@ -5,11 +5,20 @@ const STORAGE_KEYS = {
   filter: "gtorrent.view.filter",
   sort: "gtorrent.view.sort",
   dir: "gtorrent.view.dir",
+  columns: "gtorrent.table.columns.v1",
 };
+const DEFAULT_COLUMN_MIN_WIDTH = 48;
 const state = {
   connection: "offline",
   dismissedClientError: "",
+  columnResize: {
+    active: null,
+  },
 };
+
+function logUiError(action, error) {
+  console.error(`[gtorrent-ui] ${action}`, error);
+}
 
 function messageBoxEl() {
   return document.querySelector("#form-message");
@@ -38,7 +47,7 @@ function requestErrorMessage(event) {
   }
   const code = xhr.status || 0;
   if (code > 0) {
-    return "Connection error: HTTP " + String(code);
+    return `Connection error: HTTP ${String(code)}`;
   }
   return "Connection error";
 }
@@ -85,10 +94,181 @@ function isDashboardTarget(target) {
 function writeCookie(key, value) {
   try {
     const encodedValue = encodeURIComponent(value);
-    document.cookie = key + "=" + encodedValue + "; Path=/; Max-Age=31536000; SameSite=Lax";
-  } catch (_) {
-    // Ignore persistence failures.
+    document.cookie = `${key}=${encodedValue}; Path=/; Max-Age=31536000; SameSite=Lax`;
+  } catch (error) {
+    logUiError(`failed to persist cookie for key "${key}"`, error);
   }
+}
+
+function readStoredColumnWidths() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEYS.columns);
+    if (!raw) {
+      return {};
+    }
+
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object") {
+      return {};
+    }
+
+    const widths = {};
+    for (const [name, value] of Object.entries(parsed)) {
+      const width = Number(value);
+      if (Number.isFinite(width) && width > 0) {
+        widths[name] = Math.round(width);
+      }
+    }
+    return widths;
+  } catch (error) {
+    logUiError(`failed to read column widths from localStorage key "${STORAGE_KEYS.columns}"`, error);
+    return {};
+  }
+}
+
+function writeStoredColumnWidths(widths) {
+  try {
+    localStorage.setItem(STORAGE_KEYS.columns, JSON.stringify(widths));
+  } catch (error) {
+    logUiError(`failed to write column widths to localStorage key "${STORAGE_KEYS.columns}"`, error);
+  }
+}
+
+function setColumnWidthPx(col, width) {
+  col.style.width = `${Math.round(width)}px`;
+}
+
+function applyStoredColumnWidths() {
+  const table = document.querySelector("#torrent-table");
+  if (!table) {
+    return;
+  }
+
+  const widths = readStoredColumnWidths();
+  if (Object.keys(widths).length === 0) {
+    return;
+  }
+
+  const cols = table.querySelectorAll("colgroup col[data-col]");
+  for (const col of cols) {
+    const key = String(col.dataset.col || "");
+    const width = widths[key];
+    if (typeof width === "number") {
+      setColumnWidthPx(col, width);
+    }
+  }
+}
+
+function ensureColumnResizers() {
+  const table = document.querySelector("#torrent-table");
+  if (!table) {
+    return;
+  }
+
+  applyStoredColumnWidths();
+  const headers = table.querySelectorAll("thead th[data-col]");
+  for (const header of headers) {
+    if (header.querySelector(".col-resizer")) {
+      continue;
+    }
+    const handle = document.createElement("span");
+    handle.className = "col-resizer";
+    handle.setAttribute("aria-hidden", "true");
+    header.appendChild(handle);
+  }
+}
+
+function activeColumnResize() {
+  return state.columnResize.active;
+}
+
+function clearActiveColumnResize() {
+  const active = activeColumnResize();
+  if (!active) {
+    return;
+  }
+  active.handle.classList.remove("active");
+  state.columnResize.active = null;
+}
+
+function columnMinWidth(header, startWidth) {
+  const minWidth = Number(header.dataset.minWidth);
+  if (Number.isFinite(minWidth) && minWidth > 0) {
+    return Math.round(minWidth);
+  }
+
+  return Math.max(DEFAULT_COLUMN_MIN_WIDTH, Math.round(startWidth));
+}
+
+function onColumnResizeStart(event) {
+  const handle = event.target?.closest?.(".col-resizer");
+  if (!handle) {
+    return;
+  }
+
+  const header = handle.closest("th[data-col]");
+  const table = handle.closest("table");
+  if (!header || !table) {
+    return;
+  }
+
+  const colName = String(header.dataset.col || "");
+  if (colName === "") {
+    return;
+  }
+  const col = table.querySelector(`colgroup col[data-col="${colName}"]`);
+  if (!col) {
+    return;
+  }
+
+  event.preventDefault();
+  event.stopPropagation();
+
+  clearActiveColumnResize();
+
+  const startWidth = header.getBoundingClientRect().width;
+  state.columnResize.active = {
+    pointerId: event.pointerId,
+    colName: colName,
+    col: col,
+    handle: handle,
+    startX: event.clientX,
+    startWidth: startWidth,
+    minWidth: columnMinWidth(header, startWidth),
+    width: startWidth,
+  };
+  handle.classList.add("active");
+  handle.setPointerCapture(event.pointerId);
+}
+
+function onColumnResizeMove(event) {
+  const active = activeColumnResize();
+  if (!active || active.pointerId !== event.pointerId) {
+    return;
+  }
+
+  const delta = event.clientX - active.startX;
+  const nextWidth = Math.max(active.minWidth, Math.round(active.startWidth + delta));
+  setColumnWidthPx(active.col, nextWidth);
+  active.width = nextWidth;
+}
+
+function onColumnResizeEnd(event) {
+  const active = activeColumnResize();
+  if (!active || active.pointerId !== event.pointerId) {
+    return;
+  }
+
+  try {
+    active.handle.releasePointerCapture(active.pointerId);
+  } catch (error) {
+    logUiError(`failed to release pointer capture for column "${active.colName}"`, error);
+  }
+
+  const widths = readStoredColumnWidths();
+  widths[active.colName] = active.width;
+  writeStoredColumnWidths(widths);
+  clearActiveColumnResize();
 }
 
 function persistCurrentViewState() {
@@ -133,6 +313,10 @@ function initDashboardUi() {
     const target = event.detail?.target;
     if (target?.id === "dashboard") {
       renderConnection();
+      ensureColumnResizers();
+    }
+    if (target?.id === "file-list") {
+      ensureColumnResizers();
     }
   });
 
@@ -163,6 +347,13 @@ function initDashboardUi() {
     box.classList.add("is-hidden");
     box.removeAttribute("data-client-error");
   });
+
+  document.body.addEventListener("pointerdown", onColumnResizeStart);
+  document.body.addEventListener("pointermove", onColumnResizeMove);
+  document.body.addEventListener("pointerup", onColumnResizeEnd);
+  document.body.addEventListener("pointercancel", onColumnResizeEnd);
+
+  ensureColumnResizers();
 }
 
 initDashboardUi();

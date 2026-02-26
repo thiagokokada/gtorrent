@@ -101,6 +101,7 @@ type torrentRow struct {
 type dashboardView struct {
 	Params           viewParams
 	Torrents         []torrentRow
+	ColumnMinWidths  map[string]int
 	HasSelected      bool
 	SelectedHash     string
 	SelectedRunning  bool
@@ -161,6 +162,19 @@ var (
 	fragmentsControlsAndStatus = dashboardFragments{
 		Controls: true,
 		Status:   true,
+	}
+	fileListColumnMinWidths = map[string]int{
+		"name":       220,
+		"state":      90,
+		"addedAt":    110,
+		"progress":   140,
+		"etaSeconds": 90,
+		"ratio":      80,
+		"peers":      70,
+		"seeds":      70,
+		"downRate":   95,
+		"upRate":     90,
+		"sizeBytes":  110,
 	}
 )
 
@@ -464,6 +478,7 @@ func (s *Server) writeLiveUpdate(w io.Writer, flusher http.Flusher, ctx context.
 		speedLimits := s.currentSpeedLimits(ctx)
 		fallback := dashboardView{
 			Params:           params,
+			ColumnMinWidths:  fileListColumnMinWidths,
 			DownloadLimitKiB: speedLimits.DownloadKiB,
 			UploadLimitKiB:   speedLimits.UploadKiB,
 			StatusKind:       statusKind,
@@ -723,6 +738,7 @@ func (s *Server) dashboardViewWithFlash(ctx context.Context, params viewParams, 
 		speedLimits := s.currentSpeedLimits(ctx)
 		view = dashboardView{
 			Params:           params,
+			ColumnMinWidths:  fileListColumnMinWidths,
 			DownloadLimitKiB: speedLimits.DownloadKiB,
 			UploadLimitKiB:   speedLimits.UploadKiB,
 			StatusKind:       statusKind,
@@ -816,6 +832,7 @@ func (s *Server) buildDashboardView(ctx context.Context, params viewParams) (das
 	return dashboardView{
 		Params:           params,
 		Torrents:         rows,
+		ColumnMinWidths:  fileListColumnMinWidths,
 		HasSelected:      selectedHash != "",
 		SelectedHash:     selectedHash,
 		SelectedRunning:  selectedRunning,
