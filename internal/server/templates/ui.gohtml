@@ -235,7 +235,8 @@
     {{range .Torrents}}
       <tr data-hash="{{.Hash}}" class="{{if .Active}}active{{end}}"
         hx-get="{{.SelectURL}}"
-        hx-swap="none">
+        hx-target="#dashboard"
+        hx-swap="outerHTML">
         <td class="name">{{.Name}}</td>
         <td><span class="state {{.StateClass}}">{{.State}}</span></td>
         <td class="added">{{.AddedAt}}</td>

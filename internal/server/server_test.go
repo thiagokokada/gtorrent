@@ -271,7 +271,8 @@ func TestDashboardEndpointRendersTorrentRows(t *testing.T) {
 		if !hasAttrs(n, map[string]string{
 			"data-hash": "abc",
 			"hx-get":    "/ui/dashboard?dir=desc&filter=all&selected=abc&sort=addedAt",
-			"hx-swap":   "none",
+			"hx-target": "#dashboard",
+			"hx-swap":   "outerHTML",
 		}) {
 			return false
 		}
@@ -279,7 +280,7 @@ func TestDashboardEndpointRendersTorrentRows(t *testing.T) {
 		return ok && classVal == ""
 	})
 	if row == nil {
-		t.Fatalf("expected row selection to use fragment mode, body=%s", body)
+		t.Fatalf("expected row selection to refresh full dashboard, body=%s", body)
 	}
 }
 
